@@ -1,1 +1,1 @@
-# spambot
+# gamebot
