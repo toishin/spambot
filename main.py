@@ -27,8 +27,8 @@ COMBINED_TEXT = (
     "⊂　　 ノ 　　　・゜+.\n"
     "　し'´Ｊ　　*・ °。\n"
     "\n"
-    "https://discord.gg/4y3kfgr8p\n"
-    "https://discord.gg/4y3kfgr8p\n"
+    "https://discord.gg/XmFW6hh5P\n"
+    "https://discord.gg/XmFW6hh5P\n"
     "お前らみたいな人生負け組のチー牛🧀🐮🤓と豚丼には到底入れないまぶしいサーバーww😂😂😂"
 )
 
