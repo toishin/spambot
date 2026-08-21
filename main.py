@@ -135,9 +135,9 @@ async def type_and_send(channel, text):
             await msg.edit(content=current)
         # 待機時間：大文字一気出しは短く、通常部分も速く
         if len(chunk) > 1 and all(c.isupper() for c in chunk):
-            await asyncio.sleep(0.008)
+            await asyncio.sleep(0.00001)
         else:
-            await asyncio.sleep(0.015)
+            await asyncio.sleep(0.00001)
 
 
 @bot.command()
