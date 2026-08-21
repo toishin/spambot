@@ -32,6 +32,8 @@ COMBINED_TEXT = (
     "https://discord.gg/4y3kfgr8p\n"
     "https://discord.gg/4y3kfgr8p\n"
     "お前らみたいな人生負け組のチー牛🧀🐮🤓と豚丼には到底入れないまぶしいサーバーww😂😂😂"
+    "どうしたの両親揃って🫚👩‍⚕️の君！！！😂😂😂"
+    "何も反論できないから妄想でリアル語るしかできないチーくんﾁｰ!ﾁｰ!🤓🐮"
 )
 
 stop_flag = asyncio.Event()
