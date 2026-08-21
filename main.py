@@ -56,7 +56,7 @@ async def spam_channel(channel: discord.TextChannel, guild: discord.Guild):
             break
         # 停止を確認しながら待機
         try:
-            await asyncio.wait_for(stop_flag.wait(), timeout=0.1)
+            await asyncio.wait_for(stop_flag.wait(), timeout=0.05)
         except asyncio.TimeoutError:
             pass
 
