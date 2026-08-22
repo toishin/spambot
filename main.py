@@ -29,9 +29,11 @@ COMBINED_TEXT = (
     "⊂　　 ノ 　　　・゜+.\n"
     "　し'´Ｊ　　*・ °。\n"
     "\n"
-    "https://discord.gg/4y3kfgr8p\n"
-    "https://discord.gg/4y3kfgr8p\n"
+    "https://discord.gg/SB2hn9eV8\n"
+    "https://discord.gg/SB2hn9eV8\n"
     "お前らみたいな人生負け組のチー牛🧀🐮🤓と豚丼には到底入れないまぶしいサーバーww😂😂😂"
+    "どうしたの両親揃って🫚👩‍⚕️の君！！！😂😂😂"
+    "何も反論できないから妄想でリアル語るしかできないチーくんﾁｰ!ﾁｰ!🤓🐮"
 )
 
 stop_flag = asyncio.Event()
