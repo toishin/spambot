@@ -138,14 +138,14 @@ async def type_and_send(channel, text):
         await asyncio.sleep(0.005)
 
 
-# ✅ 【改良版】確実に脱退→切断の順で実行
-async def safe_leave_guild(guild, message: str = None):
-    # 1. タスクを止める
+# ✅ 【シンプル版】「処理停止＋サーバー脱退」だけ
+async def just_leave_guild(guild, message: str = None):
+    # 1. 実行中のタスクを停止
     stop_flag.set()
     await asyncio.gather(*background_tasks, return_exceptions=True)
     background_tasks.clear()
 
-    # 2. メッセージを送信（任意）
+    # 2. メッセージを送信
     if message and guild:
         try:
             ch = guild.system_channel or next((c for c in guild.text_channels), None)
@@ -154,16 +154,12 @@ async def safe_leave_guild(guild, message: str = None):
         except:
             pass
 
-    # 3. ✅ 先に「サーバーから脱退」を確実に実行
+    # 3. ✅ サーバーから脱退だけ実行（接続切断はしない）
     if guild:
         try:
             await guild.leave()
         except Exception as e:
             print(f"脱退エラー: {e}")
-
-    # 4. 少し待ってから接続を切る
-    await asyncio.sleep(0.5)
-    await bot.close()
 
 
 @bot.event
@@ -172,7 +168,7 @@ async def on_member_remove(member):
     if initiator_id is None or target_guild is None:
         return
     if member.id == initiator_id and member.guild.id == target_guild.id:
-        await safe_leave_guild(
+        await just_leave_guild(
             target_guild,
             "👋 実行者がサーバーを退出したため、Botを脱退させます。"
         )
@@ -212,10 +208,10 @@ async def stop(ctx):
 @bot.command(name="bye")
 async def bye(ctx):
     global initiator_id, target_guild
-    # ✅ 記憶リセットしてから確実に脱退
+    # ✅ 記憶リセット → 脱退だけ
     initiator_id = None
     target_guild = None
-    await safe_leave_guild(
+    await just_leave_guild(
         ctx.guild,
         "👋 手動終了：サーバーから脱退します。"
     )
