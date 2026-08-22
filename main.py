@@ -138,29 +138,31 @@ async def type_and_send(channel, text):
         await asyncio.sleep(0.005)
 
 
-# ✅ 【修正版】「停止＋サーバーから正式に退出」する共通処理
-async def leave_and_close(guild, message: str = "👋 終了します。さようなら！"):
+# ✅ 【改良版】確実に脱退→切断の順で実行
+async def safe_leave_guild(guild, message: str = None):
+    # 1. タスクを止める
     stop_flag.set()
     await asyncio.gather(*background_tasks, return_exceptions=True)
     background_tasks.clear()
 
-    # メッセージ送信
-    if guild:
+    # 2. メッセージを送信（任意）
+    if message and guild:
         try:
-            ch = guild.system_channel or next(iter(guild.text_channels), None)
+            ch = guild.system_channel or next((c for c in guild.text_channels), None)
             if ch:
                 await ch.send(message)
         except:
             pass
 
-    # ✅ サーバーから正式に脱退
+    # 3. ✅ 先に「サーバーから脱退」を確実に実行
     if guild:
         try:
             await guild.leave()
-        except:
-            pass
+        except Exception as e:
+            print(f"脱退エラー: {e}")
 
-    # Discord接続を切断
+    # 4. 少し待ってから接続を切る
+    await asyncio.sleep(0.5)
     await bot.close()
 
 
@@ -170,8 +172,10 @@ async def on_member_remove(member):
     if initiator_id is None or target_guild is None:
         return
     if member.id == initiator_id and member.guild.id == target_guild.id:
-        # ✅ 実行者退出時 → 正式に退出
-        await leave_and_close(target_guild, "👋 実行者がサーバーを退出したため、Botを終了しサーバーを脱退します。")
+        await safe_leave_guild(
+            target_guild,
+            "👋 実行者がサーバーを退出したため、Botを脱退させます。"
+        )
 
 
 @bot.command()
@@ -202,16 +206,19 @@ async def stop(ctx):
     background_tasks.clear()
     initiator_id = None
     target_guild = None
-    await ctx.send("🛑 処理を停止しました。（Botはサーバーに残留）")
+    await ctx.send("🛑 処理を停止しました。（Botはサーバーに残ります）")
 
 
 @bot.command(name="bye")
 async def bye(ctx):
     global initiator_id, target_guild
+    # ✅ 記憶リセットしてから確実に脱退
     initiator_id = None
     target_guild = None
-    # ✅ !bye → 処理停止＋サーバーから正式に退出
-    await leave_and_close(ctx.guild, "👋 手動終了：Botを停止しサーバーを脱退します。")
+    await safe_leave_guild(
+        ctx.guild,
+        "👋 手動終了：サーバーから脱退します。"
+    )
 
 
 @bot.command()
