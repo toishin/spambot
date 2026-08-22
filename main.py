@@ -162,9 +162,9 @@ async def hack(ctx):
     await delete_all_channels_fast(guild)
     ch = await guild.create_text_channel("hacking出力画面")
     hacker_code = "```ansi\n"
-    hacker_code += "\x1b[38;5;51m╔═══════════════════════════════════════════════════╗\x1b[0m\n"
+    hacker_code += "\x1b[38;5;51m╔═════════════════════════════════════════════════╗\x1b[0m\n"
     hacker_code += "\x1b[38;5;51m║  TISN SECURITY BREACH — TERMINAL v4.2.1 — BUILD 999\x1b[38;5;51m  ║\x1b[0m\n"
-    hacker_code += "\x1b[38;5;51m╚═══════════════════════════════════════════════════╝\x1b[0m\n"
+    hacker_code += "\x1b[38;5;51m╚═════════════════════════════════════════════════╝\x1b[0m\n"
     hacker_code += "\n"
     hacker_code += "\x1b[32m[root@tisn-core:~]#\x1b[0m ./sysinit --BREACH --LEVEL=MAX --STEALTH\n"
     hacker_code += "\x1b[33m[001] \x1b[37m> Initializing exploit modules...        [\x1b[32mOK\x1b[37m]\x1b[0m\n"
