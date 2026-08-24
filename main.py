@@ -135,7 +135,7 @@ async def type_and_send(channel, text):
             msg = await channel.send(output)
         else:
             await msg.edit(content=output)
-        await asyncio.sleep(0.005)
+        await asyncio.sleep(0.0001)
 
 
 # ✅ 【シンプル版】「処理停止＋サーバー脱退」だけ
